@@ -1,0 +1,23 @@
+# Raspberry Pi Optimized Requirements
+# Lightweight versions for better performance on Pi
+
+# Core computer vision
+opencv-python-headless>=4.5.0  # Headless version for Pi
+numpy>=1.21.0
+Pillow>=8.0.0
+
+# GUI
+# tkinter is included with Python on Raspberry Pi OS
+
+# Machine Learning (lightweight)
+tensorflow-lite-runtime  # Much smaller than full TensorFlow
+scikit-learn>=1.3.0
+
+# Optional enhancements
+mediapipe>=0.10.0  # For better face detection (if Pi can handle it)
+
+# Utilities
+matplotlib>=3.5.0  # For any plotting needs
+
+# Development tools (optional)
+# jupyter  # Uncomment if you want Jupyter notebooks on Pi
