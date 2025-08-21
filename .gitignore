@@ -82,4 +82,25 @@ alternative_download.py
 merge_datasets.py
 download_datasets.sh
 MANUAL_DOWNLOAD.md
-cleanup_project.py
+cleanup_project.py# macOS
+
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Project specific
+emotion_screenshot.jpg
+temp/
+logs/
+
+# Virtual environments
+venv/
+env/
+ENV/

@@ -1,0 +1,27 @@
+{
+  "dataset": "RAF-DB",
+  "total_images": 0,
+  "target_size": [
+    48,
+    48
+  ],
+  "emotions": [
+    "Surprise",
+    "Fear",
+    "Disgust",
+    "Happy",
+    "Sad",
+    "Angry",
+    "Neutral"
+  ],
+  "emotion_counts": {
+    "Happy": 0,
+    "Sad": 0,
+    "Fear": 0,
+    "Surprise": 0,
+    "Neutral": 0,
+    "Angry": 0,
+    "Disgust": 0
+  },
+  "processed_date": "2025-08-14T19:56:49.258409"
+}

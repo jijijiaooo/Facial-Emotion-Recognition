@@ -1,168 +1,189 @@
-# 🎭 Facial Emotion Recognition System
+# Interactive Emotion Recognition Companion
 
-A comprehensive emotion recognition system with enhanced accuracy for fear and disgust detection, optimized for both desktop and Raspberry Pi deployment.
+A comprehensive facial emotion recognition system with interactive companion applications, similar to virtual pet games like Pou, but with advanced emotion detection capabilities.
 
 ## ✨ Features
 
-- **🎯 Enhanced Accuracy**: Improved fear and disgust detection using research-based techniques
-- **🖥️ Multiple Interfaces**: GUI and command-line options
-- **🍓 Raspberry Pi Optimized**: Lightweight GUI for edge deployment
-- **⚡ Real-time Processing**: Live camera emotion detection
-- **🤖 Multiple Models**: Support for TensorFlow, PyTorch, and TF Lite
-- **📊 Dataset Tools**: Comprehensive dataset analysis and enhancement
-- **🎨 User-Friendly GUI**: Touch-friendly interface with real-time statistics
+- 🎭 **Interactive Virtual Companion** - Like Pou, but responds to your real emotions
+- 📹 **Real-time Emotion Detection** - Uses advanced Action Units (AU) analysis
+- 💬 **Intelligent Chat System** - Contextual conversations based on your mood
+- 🎮 **Fun Activities** - Games, music, meditation, and more
+- 📊 **Emotion Analytics** - Track your emotional patterns over time
+- 🎨 **Multiple Interfaces** - Modern PyQt5 GUI and Terminal options
 
 ## 🚀 Quick Start
 
-### Option 1: GUI Application (Recommended)
+### Option 1: Run Interactive Companion (Recommended)
 
 ```bash
-# Simple GUI (most compatible)
-python3 run_simple_gui.py
+# Activate virtual environment
+source venv/bin/activate
 
-# Full-featured GUI
-python3 run_gui.py
+# Run the companion (includes emotion detection)
+python run_companion.py
 ```
 
-### Option 2: Command Line
+### Option 2: Run Emotion Detection Only
 
 ```bash
-# Enhanced emotion recognition
-python3 src/core/enhanced_emotion_recognition.py
-
-# Basic emotion recognition
-python3 src/core/test.py
+# Run enhanced emotion detection
+python run_detection.py
 ```
 
-### Option 3: Raspberry Pi Setup
+### Option 3: Advanced Launcher
 
 ```bash
-# Automated Pi setup
-python3 setup_raspberry_pi.py
+# Run the advanced launcher with multiple options
+python run_latest_app.py
 
-# Launch Pi-optimized GUI
-python3 gui/emotion_gui_raspberry.py
+# Terminal Companion (No GUI Required)
+python apps/companions/robust_companion_app.py
 ```
-
-## 📋 Installation
-
-### Standard Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/facial-emotion-recognition.git
-cd facial-emotion-recognition
-
-# Install dependencies
-pip install -r config/requirements.txt
-
-# For Raspberry Pi
-pip install -r config/requirements_raspberry_pi.txt
-```
-
-### System Requirements
-
-- Python 3.7+
-- OpenCV 4.5+
-- Camera (built-in or USB webcam)
-- For GUI: tkinter (usually included with Python)
-
-## 🎭 Supported Emotions
-
-| Emotion        | Status          | Accuracy |
-| -------------- | --------------- | -------- |
-| 😊 Happy       | ✅ Excellent    | 95%+     |
-| 😢 Sad         | ✅ Good         | 85%+     |
-| 😠 Angry       | ✅ Good         | 85%+     |
-| 😲 Surprise    | ✅ Good         | 80%+     |
-| 😐 Neutral     | ✅ Good         | 90%+     |
-| 😨 **Fear**    | ⚡ **Enhanced** | 75%+     |
-| 🤢 **Disgust** | ⚡ **Enhanced** | 70%+     |
 
 ## 📁 Project Structure
 
 ```
-📦 facial-emotion-recognition/
-├── 🎨 gui/                    # GUI applications
-│   ├── emotion_gui_raspberry.py    # Raspberry Pi optimized
-│   ├── simple_emotion_gui.py       # Simple, compatible GUI
-│   └── basic_emotion_gui.py        # Basic GUI
-├── 📄 src/core/               # Main source code
-│   ├── main.py                     # Original training script
-│   ├── test.py                     # Basic emotion detection
-│   └── enhanced_emotion_recognition.py  # Enhanced detection
-├── 🤖 models/                 # Model files and optimization
-│   └── optimize_models.py          # Model optimization for Pi
-├── 🔧 scripts/                # Utility scripts
-│   ├── dataset_enhancement_guide.py
-│   ├── fear_disgust_diagnostic.py
-│   ├── au_enhanced_training.py
-│   └── emotion_dataset_resources.py
-├── ⚙️ config/                 # Configuration files
-│   ├── requirements.txt
-│   └── requirements_raspberry_pi.txt
-├── 📚 docs/                   # Documentation
-│   └── RASPBERRY_PI_GUIDE.md
-├── 📊 data/                   # Training datasets (empty by default)
-└── 🗑️ temp/                   # Temporary files
+📦 Interactive Emotion Recognition Companion
+├── 📁 apps/                          # Main applications
+│   ├── 📁 companions/                # Interactive companion apps
+│   │   ├── pyqt5_companion_gui.py   # PyQt5 GUI companion (recommended)
+│   │   ├── tkinter_companion_gui.py # Tkinter GUI companion
+│   │   ├── robust_companion_app.py  # Terminal companion
+│   │   └── simple_pixel_companion.py # Pixel art companion
+│   └── 📁 utils/                     # Utility applications
+├── 📁 src/                           # Core source code
+│   └── 📁 core/                      # Core emotion detection
+│       └── simple_emotion_detection.py # Enhanced emotion detection with AUs
+├── 📁 gui/                           # Additional GUI components
+├── 📁 models/                        # Pre-trained models
+├── 📁 config/                        # Configuration files
+├── 📁 training/                      # Model training scripts
+├── 📁 scripts/                       # Utility scripts
+└── run_latest_app.py                 # Main launcher
 ```
 
-## 🔧 Usage Examples
+## 🎮 Companion Features
 
-### GUI Application
+### Interactive Companion (Like Pou!)
 
-The GUI provides an intuitive interface with:
+- **Emotional Responses** - Companion reacts to your detected emotions
+- **Happiness & Energy Bars** - Visual stats that change based on interactions
+- **Mood System** - Companion has different moods (happy, sad, excited, calm, worried)
+- **Personalization** - Change companion name and settings
 
-- Real-time camera feed
-- Emotion detection with confidence scores
-- Statistics and performance monitoring
-- Adjustable detection sensitivity
+### Activities
 
-### Command Line
+- 🎲 **Random Mood Boost** - Cheer up your companion
+- 💝 **Give Virtual Gifts** - Flowers, cake, presents, and more
+- 🎵 **Play Music Together** - Dance and listen to music
+- 🎨 **Change Appearance** - Modify companion colors and style
+- 🏃 **Exercise** - Do workouts together
+- 🧘 **Meditate** - Find inner peace together
+- 🎪 **Story Time** - Listen to stories
+- 🎯 **Play Games** - Riddles, word games, and more
+
+### Communication
+
+- 💬 **Real-time Chat** - Intelligent conversations
+- 📹 **Camera Emotion Detection** - Sees your emotions through camera
+- 😊 **Manual Emotion Input** - Tell companion how you feel
+- 🔔 **Periodic Check-ins** - Companion asks how you're doing
+
+## 🔧 Technical Features
+
+### Enhanced Emotion Detection
+
+- **Action Units (AUs)** - Facial muscle movement analysis
+- **7 Emotions** - Happy, Sad, Angry, Fear, Surprise, Disgust, Neutral
+- **High Accuracy** - Improved fear and disgust detection
+- **Real-time Processing** - Live camera feed analysis
+
+### Supported Platforms
+
+- **macOS** - Full support with PyQt5
+- **Windows** - Full support
+- **Linux** - Full support
+- **Raspberry Pi** - Optimized lightweight version
+
+## 📋 Requirements
+
+### System Requirements
+
+- Python 3.9+
+- Webcam (for emotion detection)
+- 4GB RAM minimum
+- Modern CPU (GPU optional but recommended)
+
+### Dependencies
 
 ```bash
-# Run enhanced detection with temporal smoothing
-python3 src/core/enhanced_emotion_recognition.py
+# Core dependencies
+pip install opencv-python numpy Pillow
 
-# Analyze your dataset for improvements
-python3 scripts/dataset_enhancement_guide.py
+# GUI dependencies
+pip install PyQt5  # For PyQt5 GUI (recommended)
+# tkinter is usually included with Python
 
-# Diagnose fear/disgust detection issues
-python3 scripts/fear_disgust_diagnostic.py
+# ML dependencies (optional, for training)
+pip install tensorflow keras torch torchvision
 ```
 
-## 🍓 Raspberry Pi Deployment
+## 🛠️ Installation
 
-This system is optimized for Raspberry Pi with:
+1. **Clone the repository**
 
-- Lightweight processing
-- Touch-friendly interface
-- Automatic hardware detection
-- Performance optimizations
+```bash
+git clone <repository-url>
+cd "Interactive Emotion Recognition Companion"
+```
 
-See [Raspberry Pi Guide](docs/RASPBERRY_PI_GUIDE.md) for detailed setup instructions.
+2. **Create virtual environment**
 
-## 🎯 Improving Accuracy
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
 
-### For Fear and Disgust Detection
+3. **Install dependencies**
 
-1. **Analyze your dataset**: `python3 scripts/fear_disgust_diagnostic.py`
-2. **Collect more data**: Use the dataset resource guide
-3. **Apply fixes**: `python3 scripts/fix_fear_disgust.py`
+```bash
+pip install -r config/requirements.txt
+```
 
-### Dataset Enhancement
+4. **Run the application**
 
-- Use `scripts/emotion_dataset_resources.py` for data sources
-- Follow Action Unit (AU) guidelines for better training data
-- Balance your dataset across all emotions
+```bash
+python run_latest_app.py
+```
+
+## 🎯 Usage Guide
+
+### First Time Setup
+
+1. Run the launcher: `python run_latest_app.py`
+2. Choose option 1 (PyQt5 GUI Companion)
+3. Allow camera access when prompted
+4. Start interacting with your companion!
+
+### Companion Interaction
+
+- **Camera Detection**: Click "Start Camera" to enable real-time emotion detection
+- **Manual Input**: Use emotion buttons to tell companion how you feel
+- **Chat**: Switch to Chat tab for conversations
+- **Activities**: Try different activities in the Activities tab
+- **Stats**: View your interaction statistics
+- **Settings**: Customize companion name and behavior
+
+### Tips for Best Experience
+
+- Ensure good lighting for camera detection
+- Position your face clearly in the camera view
+- Try different activities to see how companion responds
+- Chat regularly to build relationship with companion
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## 📄 License
 
@@ -170,25 +191,19 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- FER-2013 dataset contributors
-- OpenCV community
-- TensorFlow team
-- Raspberry Pi Foundation
+- Emotion recognition research community
+- OpenCV and PyQt5 developers
+- Virtual pet game inspiration (Pou, Tamagotchi)
+- Facial Action Coding System (FACS) research
 
 ## 📞 Support
 
-- 📖 Check the [documentation](docs/)
-- 🐛 Report issues on GitHub
-- 💡 Feature requests welcome
+If you encounter any issues:
 
-## 🔄 Recent Updates
-
-- ✅ Enhanced fear and disgust detection
-- ✅ Raspberry Pi optimization
-- ✅ Multiple GUI options
-- ✅ Comprehensive dataset tools
-- ✅ Action Unit (AU) based training
+1. Check the troubleshooting section in docs/
+2. Run the compatibility checker: `python apps/utils/check_gui_compatibility.py`
+3. Open an issue on GitHub
 
 ---
 
-**Note**: This project includes research-based improvements for emotion recognition accuracy, particularly for underrepresented emotions like fear and disgust.
+**Enjoy your interactive emotion companion! 🎭✨**
