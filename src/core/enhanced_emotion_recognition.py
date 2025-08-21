@@ -86,11 +86,31 @@ class EnhancedEmotionRecognizer:
         
         # Method 3: Haar Cascade (fallback)
         try:
-            self.face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
-            self.face_detectors.append(("haar", self.detect_faces_haar))
-            print("✅ Haar Cascade face detection initialized")
-        except:
-            pass
+            # Try multiple paths for the Haar cascade file
+            cascade_paths = [
+                'haarcascade_frontalface_default.xml',
+                'config/haarcascade_frontalface_default.xml',
+                cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+            ]
+            
+            self.face_cascade = None
+            for cascade_path in cascade_paths:
+                try:
+                    cascade = cv2.CascadeClassifier(cascade_path)
+                    if not cascade.empty():
+                        self.face_cascade = cascade
+                        print(f"✅ Haar Cascade loaded from: {cascade_path}")
+                        break
+                except:
+                    continue
+            
+            if self.face_cascade is not None:
+                self.face_detectors.append(("haar", self.detect_faces_haar))
+                print("✅ Haar Cascade face detection initialized")
+            else:
+                print("⚠️ Haar Cascade file not found - skipping")
+        except Exception as e:
+            print(f"⚠️ Haar Cascade initialization failed: {e}")
     
     def init_emotion_models(self):
         """Initialize multiple emotion models for ensemble prediction"""
@@ -188,18 +208,27 @@ class EnhancedEmotionRecognizer:
     
     def detect_faces_haar(self, frame):
         """Haar cascade detection with multi-scale"""
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = self.face_cascade.detectMultiScale(
-            gray, 
-            scaleFactor=1.1,
-            minNeighbors=5,
-            minSize=(30, 30),
-            flags=cv2.CASCADE_SCALE_IMAGE
-        )
+        if self.face_cascade is None or self.face_cascade.empty():
+            print("⚠️ Haar cascade not available")
+            return []
         
-        # Add confidence score (estimated)
-        faces_with_conf = [(x, y, w, h, 0.8) for (x, y, w, h) in faces]
-        return faces_with_conf
+        try:
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            faces = self.face_cascade.detectMultiScale(
+                gray, 
+                scaleFactor=1.1,
+                minNeighbors=5,
+                minSize=(30, 30),
+                flags=cv2.CASCADE_SCALE_IMAGE
+            )
+            
+            # Add confidence score (estimated)
+            faces_with_conf = [(x, y, w, h, 0.8) for (x, y, w, h) in faces]
+            return faces_with_conf
+            
+        except Exception as e:
+            print(f"⚠️ Haar cascade detection error: {e}")
+            return []
     
     def enhanced_preprocessing(self, face_img):
         """Apply research-based preprocessing techniques"""
