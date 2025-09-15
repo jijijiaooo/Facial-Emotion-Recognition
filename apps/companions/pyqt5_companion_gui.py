@@ -11,6 +11,9 @@ import threading
 import time
 import random
 import os
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+from src.core.simple_emotion_detection import SimpleEmotionDetector
 
 # Try to import PyQt5
 try:
@@ -22,11 +25,6 @@ try:
 except ImportError:
     PYQT5_AVAILABLE = False
     print("PyQt5 not available")
-
-import sys
-import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
-from src.core.simple_emotion_detection import SimpleEmotionDetector
 
 class CompanionSignals(QObject):
     """Signals for thread-safe GUI updates"""
@@ -74,10 +72,10 @@ class PyQt5CompanionGUI(QMainWindow):
         self.start_companion_behavior()
     
     def init_detector(self):
-        """Safely initialize the emotion detector"""
+        """Safely initialize the emotion detector from simple_emotion_detection.py"""
         try:
             self.detector = SimpleEmotionDetector()
-            print("✅ Emotion detector initialized")
+            print("✅ Emotion detector initialized from simple_emotion_detection.py")
         except Exception as e:
             print(f"⚠️ Could not initialize emotion detector: {e}")
             self.detector = None
@@ -85,17 +83,14 @@ class PyQt5CompanionGUI(QMainWindow):
     def test_camera(self):
         """Test if camera is available"""
         try:
+            import cv2
             cap = cv2.VideoCapture(0)
-            if cap.isOpened():
-                ret, frame = cap.read()
+            if cap is not None and cap.isOpened():
                 cap.release()
-                if ret and frame is not None:
-                    self.camera_available = True
-                    return True
-            cap.release()
+                self.camera_available = True
+                return True
         except Exception as e:
             print(f"Camera test failed: {e}")
-        
         self.camera_available = False
         return False
     
@@ -1015,7 +1010,6 @@ ACTION UNITS: ENABLED
         self.camera_thread.start()
         
         self.companion_speak("CAMERA ACTIVATED. EMOTION DETECTION ONLINE.")
-    
     def stop_camera_detection(self):
         """Stop camera detection"""
         self.detection_active = False
@@ -1023,20 +1017,21 @@ ACTION UNITS: ENABLED
         self.companion_speak("CAMERA DEACTIVATED. EMOTION DETECTION OFFLINE.")
     
     def camera_detection_loop(self):
-        """Main camera detection loop"""
+        """Main camera detection loop with improved face and emotion detection stability"""
         cap = None
         try:
             cap = cv2.VideoCapture(0)
-            
             if not cap.isOpened():
                 self.signals.speak_message.emit("Sorry, I couldn't access your camera! 📷")
                 self.detection_active = False
                 return
-            
             last_emotion_time = 0
+            last_face_time = time.time()
             consecutive_errors = 0
             max_errors = 10
-            
+            min_face_size = 60  # Minimum width/height for a valid face
+            emotion_cooldown = 1.0  # seconds
+            last_emotion = self.current_emotion
             while self.detection_active and consecutive_errors < max_errors:
                 try:
                     ret, frame = cap.read()
@@ -1044,63 +1039,64 @@ ACTION UNITS: ENABLED
                         consecutive_errors += 1
                         time.sleep(0.1)
                         continue
-                    
                     consecutive_errors = 0
-                    
-                    # Detect faces and emotions
+                    # Mirror the frame horizontally (selfie view)
+                    frame = cv2.flip(frame, 1)
+                    # Use detector on mirrored color frame
                     faces = self.detector.detect_faces(frame)
-                    
+                    face_found = False
                     if faces and len(faces) > 0:
-                        x, y, w, h = faces[0]  # Use first face
-                        
-                        if x >= 0 and y >= 0 and w > 0 and h > 0:
+                        x, y, w, h = faces[0]  # Use first face only
+                        if w > min_face_size and h > min_face_size:
+                            face_found = True
+                            last_face_time = time.time()
                             face_img = frame[y:y+h, x:x+w]
-                            
                             if face_img.size > 0:
                                 emotion, confidence = self.detector.predict_emotion(face_img)
-                                
-                                # Real-time emotion updates with minimal delay
+                                # Workaround: swap Sad and Angry if confused
+                                if emotion == "Angry":
+                                    # If confidence is not very high, check if it could be Sad
+                                    if confidence < 0.85:
+                                        emotion = "Sad"
+                                elif emotion == "Sad":
+                                    if confidence < 0.85:
+                                        emotion = "Angry"
                                 current_time = time.time()
-                                
-                                # Debug: Print emotion and confidence
                                 print(f"🎭 Detected: {emotion} (confidence: {confidence:.3f})")
-                                
-                                # Much lower confidence threshold for balanced model
-                                if confidence > 0.15 and current_time - last_emotion_time > 0.2:  # More sensitive
+                                # Use a higher confidence threshold for more reliable detection
+                                if (confidence > 0.7 and current_time - last_emotion_time > emotion_cooldown):
                                     if emotion != self.current_emotion:
-                                        print(f"🔄 Updating emotion: {self.current_emotion} → {emotion}")
+                                        print(f"🔄 Updating emotion: {self.companion_name} → {emotion}")
                                         self.signals.update_emotion.emit(emotion)
                                         last_emotion_time = current_time
-                    
-                    # Show camera feed
-                    for (x, y, w, h) in faces:
-                        if x >= 0 and y >= 0 and w > 0 and h > 0:
+                                        last_emotion = emotion
+                            # Draw only one bounding box (the first face)
                             cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
                             cv2.putText(frame, f"{self.current_emotion}", (x, y-10), 
                                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-                    
+                    # Fallback to Neutral if no face detected for 3 seconds
+                    if not face_found and (time.time() - last_face_time > 3.0):
+                        if self.current_emotion != "Neutral":
+                            print("😐 No face detected for 3s, reverting to Neutral")
+                            self.signals.update_emotion.emit("Neutral")
+                            last_emotion_time = time.time()
+                            last_emotion = "Neutral"
                     cv2.putText(frame, "Press 'q' to stop camera", (10, 30), 
                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-                    
                     cv2.imshow(f'{self.companion_name} - Camera View', frame)
-                    
                     if cv2.waitKey(1) & 0xFF == ord('q'):
                         self.signals.speak_message.emit("Camera stopped. You can still tell me how you feel manually! 😊")
                         break
-                    
                 except Exception as e:
+                    print(f"[Detection Error] {e}")
                     consecutive_errors += 1
-                    time.sleep(0.05)  # Faster error recovery
+                    time.sleep(0.05)
                     continue
-                
-                time.sleep(0.03)  # Much faster detection - ~30 FPS
-            
+                time.sleep(0.03)
             if consecutive_errors >= max_errors:
                 self.signals.speak_message.emit("Camera had too many errors. Stopping detection. 📷")
-            
         except Exception as e:
             self.signals.speak_message.emit(f"Camera error: {str(e)[:50]}... 📷")
-        
         finally:
             self.detection_active = False
             if cap:
