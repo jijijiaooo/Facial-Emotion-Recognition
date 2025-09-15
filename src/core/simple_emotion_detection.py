@@ -61,16 +61,18 @@ class SimpleEmotionDetector:
         raf_db_paths.extend(raf_db_timestamped)
         
         # Fallback to original model
-        original_paths = [
-            'model_file_30epochs.h5',
-            'models/model_file_30epochs.h5',
-            '../models/model_file_30epochs.h5',
-            '../../models/model_file_30epochs.h5'
-        ]
         
+        original_paths = [
+    'models/raf_db_simple_cnn.h5',
+    'model_file_30epochs.h5',
+    'models/model_file_30epochs.h5',
+    '../models/model_file_30epochs.h5',
+    '../../models/model_file_30epochs.h5'
+]
         all_paths = hybrid_paths + raf_db_paths + original_paths
         
         for path in all_paths:
+            print(f"Checking for model file: {path} ... exists: {os.path.exists(path)}")
             if os.path.exists(path):
                 try:
                     from tensorflow import keras
@@ -292,140 +294,84 @@ class SimpleEmotionDetector:
             brightness = np.mean(gray)
             contrast = np.std(gray)
             
-            # Emotion classification based on Action Units (balanced for all emotions)
+            # Emotion classification based on Action Units (winner-takes-all, stable)
             emotion_scores = {
-                'Happy': 0,
-                'Sad': 0,
-                'Angry': 0,
-                'Fear': 0,
-                'Surprise': 0,
-                'Disgust': 0,
-                'Neutral': 0.15  # Lower baseline to allow other emotions
+                'Happy': 0.0,
+                'Sad': 0.0,
+                'Angry': 0.0,
+                'Fear': 0.0,
+                'Surprise': 0.0,
+                'Disgust': 0.0,
+                'Neutral': 0.6  # Very strong fallback to Neutral
             }
-            
             # Happy: AU6+AU12 (cheek raiser + lip corner puller)
             happy_score = 0
-            if aus.get('AU6_AU12', 0) > 25:  # Slightly lower threshold
-                happy_score += 0.6
-            if brightness > 115:
-                happy_score += 0.2
-            if happy_score > 0.25:  # Lower threshold
+            if aus.get('AU6_AU12', 0) > 20:
+                happy_score += 1.0
+            if brightness > 120:
+                happy_score += 0.3
+            if happy_score > 0.4:
                 emotion_scores['Happy'] = happy_score
-            
             # Sad: AU15 (lip corner depressor) + additional sad indicators
             sad_score = 0
-            if aus.get('AU15', 0) > 18:  # Lower threshold
-                sad_score += 0.5
-            if brightness < 125:
+            if aus.get('AU15', 0) > 6:
+                sad_score += 1.0
+            if brightness < 120:
+                sad_score += 0.3
+            if aus.get('AU1_AU2', 0) > 5 and aus.get('AU4', 0) > 5:
                 sad_score += 0.2
-            # Additional sad indicators
-            if aus.get('AU1_AU2', 0) > 10 and aus.get('AU4', 0) > 10:  # Lower thresholds
-                sad_score += 0.2
-            if contrast < 32:
+            if contrast < 30:
                 sad_score += 0.1
-            if aus.get('AU15', 0) > 12:  # Lower threshold
-                sad_score += 0.2
-            if sad_score > 0.25:  # Lower threshold
+            if sad_score > 0.4:
                 emotion_scores['Sad'] = sad_score
-            
-            # Angry: AU4 (brow lowerer) + contrast (more sensitive)
+            # Angry: AU4 (brow lowerer) + contrast
             angry_score = 0
-            if aus.get('AU4', 0) > 25:  # Much lower threshold
-                angry_score += 0.5
-            if contrast > 25:  # Lower contrast requirement
+            if aus.get('AU4', 0) > 12:
+                angry_score += 1.0
+            if contrast > 30:
                 angry_score += 0.3
-            # Additional angry indicators
-            if aus.get('AU4', 0) > 18 and brightness < 120:  # More sensitive
-                angry_score += 0.3
-            # Check for tense facial features
-            if aus.get('AU4', 0) > 15:  # Any brow lowering
+            if aus.get('AU4', 0) > 8 and brightness < 110:
                 angry_score += 0.2
-            if angry_score > 0.25:  # Much lower threshold
+            if angry_score > 0.4:
                 emotion_scores['Angry'] = angry_score
-            
             # Fear: AU1+AU2 (brow raiser) + AU5 (upper lid raiser) + AU20 (lip stretcher)
             fear_score = 0
-            if aus.get('AU1_AU2', 0) > 20:  # Lower threshold
+            if aus.get('AU1_AU2', 0) > 10:
+                fear_score += 0.7
+            if aus.get('AU5', 0) > 8:
+                fear_score += 0.5
+            if aus.get('AU20', 0) > 6:
                 fear_score += 0.3
-            if aus.get('AU5', 0) > 18:  # Lower threshold
-                fear_score += 0.3
-            if aus.get('AU20', 0) > 15:  # Lower threshold
-                fear_score += 0.3
-            # Additional fear indicators
-            if brightness > 120 and contrast > 30:  # More sensitive
-                fear_score += 0.2
-            # Wide eyes indicator
-            if aus.get('AU5', 0) > 12:  # Any upper lid raising
-                fear_score += 0.2
-            if fear_score > 0.25:  # Much lower threshold
+            if fear_score > 0.4:
                 emotion_scores['Fear'] = fear_score
-            
             # Surprise: AU1+AU2 (brow raiser) + AU5 (upper lid raiser) + AU25+AU26 (jaw drop)
             surprise_score = 0
-            if aus.get('AU1_AU2', 0) > 25:  # Lower threshold
-                surprise_score += 0.3
-            if aus.get('AU5', 0) > 22:  # Lower threshold
-                surprise_score += 0.3
-            if aus.get('AU25', 0) > 15 or aus.get('AU26', 0) > 14:  # Lower thresholds
-                surprise_score += 0.4
-            if surprise_score > 0.3:  # Lower threshold
+            if aus.get('AU1_AU2', 0) > 14:
+                surprise_score += 0.7
+            if aus.get('AU5', 0) > 10:
+                surprise_score += 0.5
+            if aus.get('AU25', 0) > 6 or aus.get('AU26', 0) > 5:
+                surprise_score += 0.5
+            if surprise_score > 0.4:
                 emotion_scores['Surprise'] = surprise_score
-            
-            # Disgust: AU9 (nose wrinkler) + AU10 (upper lip raiser) - MUCH more sensitive
+            # Disgust: AU9 (nose wrinkler) + AU10 (upper lip raiser)
             disgust_score = 0
-            if aus.get('AU9', 0) > 12:  # Much lower threshold
-                disgust_score += 0.4
-            if aus.get('AU10', 0) > 10:  # Much lower threshold
-                disgust_score += 0.4
-            # Additional disgust indicators (more sensitive)
-            if aus.get('AU9', 0) > 8 or aus.get('AU10', 0) > 8:  # Any nose/lip activity
-                disgust_score += 0.3
-            # Check for upper lip curl
-            if aus.get('AU10', 0) > 5:  # Very sensitive
-                disgust_score += 0.2
-            if disgust_score > 0.2:  # Much lower threshold
+            if aus.get('AU9', 0) > 7:
+                disgust_score += 0.8
+            if aus.get('AU10', 0) > 6:
+                disgust_score += 0.6
+            if disgust_score > 0.4:
                 emotion_scores['Disgust'] = disgust_score
-            
-            # Conservative fallback system - only when no clear emotion detected
-            max_score = max(emotion_scores.values())
-            if max_score < 0.35:  # Only use fallback when really unclear
-                # Simple fallback based on brightness and contrast patterns
-                h, w = gray.shape
-                
-                # Analyze different regions
-                upper_region = gray[:h//3, :]
-                middle_region = gray[h//3:2*h//3, :]
-                lower_region = gray[2*h//3:, :]
-                
-                upper_brightness = np.mean(upper_region)
-                middle_brightness = np.mean(middle_region)
-                lower_brightness = np.mean(lower_region)
-                
-                # Conservative pattern matching - only clear cases
-                if lower_brightness < middle_brightness * 0.8 and brightness < 120:  # Very dark mouth
-                    emotion_scores['Sad'] = max(emotion_scores['Sad'], 0.35)
-                elif lower_brightness > middle_brightness * 1.15 and brightness > 120:  # Very bright mouth
-                    emotion_scores['Happy'] = max(emotion_scores['Happy'], 0.35)
-                elif upper_brightness > brightness * 1.15 and contrast > 40:  # Very bright upper region
-                    emotion_scores['Surprise'] = max(emotion_scores['Surprise'], 0.35)
-                elif contrast > 45 and brightness < 105:  # Very high contrast, very dark
-                    emotion_scores['Angry'] = max(emotion_scores['Angry'], 0.35)
-            
-            # Find the emotion with highest score
-            predicted_emotion = max(emotion_scores, key=emotion_scores.get)
-            confidence = min(0.95, emotion_scores[predicted_emotion])
-            
-            # Debug output (uncomment for debugging)
-            # if hasattr(self, 'debug_mode') and self.debug_mode:
-            #     print(f"AU Values: {aus}")
-            #     print(f"Emotion Scores: {emotion_scores}")
-            #     print(f"Predicted: {predicted_emotion} ({confidence:.2f})")
-            
-            # Boost confidence for clear detections
-            if confidence > 0.4:
-                confidence = min(0.9, confidence + 0.1)
-            
-            return predicted_emotion, confidence
+            # Winner-takes-all: only allow non-neutral if it is clearly dominant
+            max_emotion = max(emotion_scores, key=emotion_scores.get)
+            max_score = emotion_scores[max_emotion]
+            if max_emotion != 'Neutral' and max_score < 0.7:
+                max_emotion = 'Neutral'
+                max_score = emotion_scores['Neutral']
+            confidence = min(0.95, max_score)
+            if confidence > 0.7:
+                confidence = min(0.9, confidence + 0.05)
+            return max_emotion, confidence
                 
         except Exception as e:
             print(f"Enhanced prediction error: {e}")
@@ -468,8 +414,11 @@ class SimpleEmotionDetector:
                 # Detect faces
                 faces = self.detect_faces(frame)
                 
-                # Process each face
-                for (x, y, w, h) in faces:
+                # Only process the largest face (if any faces detected)
+                if faces:
+                    # Find the largest face by area
+                    largest_face = max(faces, key=lambda rect: rect[2] * rect[3])
+                    x, y, w, h = largest_face
                     # Extract face region
                     face_img = frame[y:y+h, x:x+w]
                     
