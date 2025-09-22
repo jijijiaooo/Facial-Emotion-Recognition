@@ -8,6 +8,8 @@ import cv2
 import numpy as np
 import os
 import sys
+import glob
+import pickle
 
 class SimpleEmotionDetector:
     def __init__(self):
@@ -18,8 +20,12 @@ class SimpleEmotionDetector:
             'Surprise': (0, 165, 255)
         }
         
-        # Try to load model
-        self.model = self.load_model()
+        # Load all available models for ensemble prediction
+        self.models = self.load_all_models()
+        self.ensemble_weights = self.load_ensemble_weights()
+        
+        # Keep backward compatibility
+        self.model = self.models[0] if self.models else None
         
         # Initialize face detection
         self.face_cascade = self.init_face_detection()
@@ -29,71 +35,183 @@ class SimpleEmotionDetector:
         self.fps_start = cv2.getTickCount()
         self.current_fps = 0
         
-        # Debug mode for Action Units
+        # Debug mode for Action Units and ensemble
         self.debug_mode = False
         self.last_aus = {}
+        
+        # Print ensemble information
+        self.print_ensemble_info()
     
-    def load_model(self):
-        """Load emotion recognition model (RAF-DB preferred)"""
-        # Try Hybrid AU models first (highest performance)
-        hybrid_paths = [
-            'models/hybrid_au_end_to_end_best.h5',
-            'models/hybrid_au_hybrid_best.h5',
-            '../models/hybrid_au_end_to_end_best.h5',
-            '../models/hybrid_au_hybrid_best.h5'
+    def load_ensemble_weights(self):
+        """Load ensemble weights from pickle file if available"""
+        ensemble_info_paths = [
+            'models/ensemble_raf_db1_*_info.pkl',
+            '../models/ensemble_raf_db1_*_info.pkl'
         ]
         
-        # RAF-DB models (good performance)
-        raf_db_paths = [
-            'models/raf_db_enhanced_best.h5',
-            'models/raf_db_efficient_best.h5',
-            'models/raf_db_resnet_best.h5',
-            '../models/raf_db_enhanced_best.h5',
-            '../models/raf_db_efficient_best.h5'
+        for pattern in ensemble_info_paths:
+            files = glob.glob(pattern)
+            if files:
+                try:
+                    with open(files[0], 'rb') as f:
+                        info = pickle.load(f)
+                    if 'weights' in info:
+                        print(f"Loaded ensemble weights: {info['weights']}")
+                        return info['weights']
+                except Exception as e:
+                    print(f"Error loading ensemble weights: {e}")
+        
+        # Default equal weights
+        return {}
+
+    def load_all_models(self):
+        """Load all available emotion recognition models for ensemble prediction"""
+        models = []
+        
+        # Priority order: finetuned > best > final > simple
+        model_patterns = [
+            # Finetuned models (highest priority)
+            'models/*_finetuned_best.h5',
+            '../models/*_finetuned_best.h5',
+            
+            # Best models
+            'models/*_best.h5',
+            '../models/*_best.h5',
+            
+            # Final models
+            'models/*_final.h5',
+            '../models/*_final.h5',
+            
+            # Simple/original models
+            'models/raf_db_simple_cnn.h5',
+            'models/model_file_30epochs.h5',
+            '../models/raf_db_simple_cnn.h5',
+            '../models/model_file_30epochs.h5'
         ]
         
-        # Also check for timestamped models (sorted by newest first)
-        import glob
-        hybrid_timestamped = sorted(glob.glob('models/hybrid_au_*_best.h5'), reverse=True)
-        raf_db_timestamped = sorted(glob.glob('models/raf_db_*_best.h5'), reverse=True)
+        loaded_models = set()  # Track loaded model names to avoid duplicates
         
-        hybrid_paths.extend(hybrid_timestamped)
-        raf_db_paths.extend(raf_db_timestamped)
-        
-        # Fallback to original model
-        
-        original_paths = [
-    'models/raf_db_simple_cnn.h5',
-    'model_file_30epochs.h5',
-    'models/model_file_30epochs.h5',
-    '../models/model_file_30epochs.h5',
-    '../../models/model_file_30epochs.h5'
-]
-        all_paths = hybrid_paths + raf_db_paths + original_paths
-        
-        for path in all_paths:
-            print(f"Checking for model file: {path} ... exists: {os.path.exists(path)}")
-            if os.path.exists(path):
+        for pattern in model_patterns:
+            model_files = glob.glob(pattern)
+            
+            for model_path in sorted(model_files, reverse=True):  # Newest first
+                # Extract model identifier to avoid loading same architecture twice
+                model_name = os.path.basename(model_path).split('_')[0:3]  # e.g., ['raf', 'db1', 'resnet']
+                model_id = '_'.join(model_name)
+                
+                # Skip if we already loaded this model architecture
+                if model_id in loaded_models:
+                    continue
+                
                 try:
                     from tensorflow import keras
-                    model = keras.models.load_model(path)
-                    if "hybrid_au" in path:
-                        model_type = "Hybrid AU-CNN"
-                    elif "raf_db" in path:
-                        model_type = "RAF-DB"
+                    model = keras.models.load_model(model_path)
+                    
+                    # Validate model architecture
+                    if not self.validate_model(model, model_path):
+                        print(f"Model validation failed for {model_path}")
+                        continue
+                    
+                    # Determine model type for weighting
+                    if "resnet" in model_path.lower():
+                        model_type = "resnet"
+                    elif "mobilenet" in model_path.lower():
+                        model_type = "mobilenet"
+                    elif "custom" in model_path.lower():
+                        model_type = "custom"
                     else:
-                        model_type = "Original"
-                    print(f"{model_type} model loaded: {path}")
-                    return model
+                        model_type = "simple"
+                    
+                    model_info = {
+                        'model': model,
+                        'path': model_path,
+                        'type': model_type,
+                        'name': os.path.basename(model_path),
+                        'input_shape': model.input_shape,
+                        'output_shape': model.output_shape
+                    }
+                    
+                    models.append(model_info)
+                    loaded_models.add(model_id)
+                    print(f"Loaded {model_type} model: {model_path} (input: {model.input_shape}, output: {model.output_shape})")
+                    
                 except ImportError:
-                    print("TensorFlow not available")
+                    print("TensorFlow not available - skipping neural network models")
                     break
                 except Exception as e:
-                    print(f"Model load error: {e}")
+                    print(f"Error loading model {model_path}: {e}")
                     continue
         
-        print("No model loaded - using basic detection")
-        return None
+        print(f"Total models loaded for ensemble: {len(models)}")
+        return models
+    
+    def validate_model(self, model, model_path):
+        """Validate that model has expected input/output structure for emotion recognition"""
+        try:
+            # Check input shape - should be compatible with (None, 48, 48, 1) or similar
+            input_shape = model.input_shape
+            if len(input_shape) != 4:  # Should be (batch, height, width, channels)
+                print(f"Warning: Unexpected input shape {input_shape} for {model_path}")
+                return False
+            
+            # Check output shape - should have 7 classes for emotions
+            output_shape = model.output_shape
+            if len(output_shape) != 2 or output_shape[1] != 7:
+                print(f"Warning: Unexpected output shape {output_shape} for {model_path} (expected 7 emotions)")
+                return False
+            
+            return True
+            
+        except Exception as e:
+            print(f"Model validation error for {model_path}: {e}")
+            return False
+
+    def print_ensemble_info(self):
+        """Print information about the loaded ensemble"""
+        print("\n" + "="*60)
+        print("ENSEMBLE EMOTION DETECTION SYSTEM")
+        print("="*60)
+        
+        if not self.models:
+            print("⚠️  No models loaded - using basic detection only")
+            return
+        
+        print(f"✅ Loaded {len(self.models)} models for ensemble prediction:")
+        
+        for i, model_info in enumerate(self.models, 1):
+            model_type = model_info['type']
+            weight = self.ensemble_weights.get(model_type, 1.0)
+            input_shape = model_info['input_shape']
+            
+            print(f"   {i}. {model_info['name']}")
+            print(f"      Type: {model_type.title()} | Weight: {weight} | Input: {input_shape}")
+        
+        if self.ensemble_weights:
+            print(f"\n🎯 Ensemble weights: {self.ensemble_weights}")
+        else:
+            print("\n🎯 Using equal weights for all models")
+        
+        print("="*60 + "\n")
+    
+    def enable_debug_mode(self):
+        """Enable debug mode to see individual model predictions"""
+        self.debug_mode = True
+        print("🔍 Debug mode enabled - will show individual model predictions")
+    
+    def disable_debug_mode(self):
+        """Disable debug mode"""
+        self.debug_mode = False
+        print("🔍 Debug mode disabled")
+    
+    def get_ensemble_summary(self):
+        """Get a summary of the ensemble system"""
+        return {
+            'total_models': len(self.models),
+            'model_types': [model['type'] for model in self.models],
+            'model_names': [model['name'] for model in self.models],
+            'ensemble_weights': self.ensemble_weights,
+            'has_ensemble': len(self.models) > 1
+        }
     
     def init_face_detection(self):
         """Initialize face detection with multiple fallbacks"""
@@ -169,28 +287,131 @@ class SimpleEmotionDetector:
             return [(margin_w, margin_h, w - 2*margin_w, h - 2*margin_h)]
     
     def predict_emotion(self, face_img):
-        """Predict emotion with model or basic rules"""
-        if self.model is not None:
-            return self.predict_with_model(face_img)
+        """Predict emotion with ensemble models or basic rules"""
+        if self.models:
+            return self.predict_with_ensemble(face_img)
         else:
             return self.predict_basic(face_img)
     
-    def predict_with_model(self, face_img):
-        """Predict using trained model"""
+    def predict_with_ensemble(self, face_img):
+        """Predict using ensemble of models with weighted voting"""
         try:
-            # Preprocess
-            gray = cv2.cvtColor(face_img, cv2.COLOR_BGR2GRAY)
-            resized = cv2.resize(gray, (48, 48))
-            normalized = resized / 255.0
-            reshaped = np.reshape(normalized, (1, 48, 48, 1))
+            # Get predictions from all models
+            all_predictions = []
+            model_weights = []
             
-            # Predict
-            result = self.model.predict(reshaped, verbose=0)
-            emotion_idx = np.argmax(result, axis=1)[0]
-            confidence = result[0][emotion_idx]
+            for model_info in self.models:
+                try:
+                    model = model_info['model']
+                    model_type = model_info['type']
+                    
+                    # Preprocess image specifically for this model
+                    preprocessed = self.preprocess_for_specific_model(face_img, model_info)
+                    
+                    # Get prediction from this model
+                    result = model.predict(preprocessed, verbose=0)
+                    
+                    # Get weight for this model type
+                    weight = self.ensemble_weights.get(model_type, 1.0)
+                    
+                    all_predictions.append(result[0])
+                    model_weights.append(weight)
+                    
+                    if self.debug_mode:
+                        print(f"Model {model_info['name']}: {self.emotions[np.argmax(result[0])]} (conf: {np.max(result[0]):.3f}, weight: {weight})")
+                    
+                except Exception as e:
+                    print(f"Error predicting with model {model_info['name']}: {e}")
+                    continue
+            
+            if not all_predictions:
+                return self.predict_basic(face_img)
+            
+            # Combine predictions using weighted average
+            ensemble_prediction = self.combine_predictions(all_predictions, model_weights)
+            
+            # Get final emotion and confidence
+            emotion_idx = np.argmax(ensemble_prediction)
+            confidence = ensemble_prediction[emotion_idx]
+            
+            if self.debug_mode:
+                print(f"Ensemble result: {self.emotions[emotion_idx]} (conf: {confidence:.3f}) from {len(all_predictions)} models")
             
             return self.emotions[emotion_idx], confidence
             
+        except Exception as e:
+            print(f"Ensemble prediction error: {e}")
+            return self.predict_basic(face_img)
+    
+    def preprocess_for_models(self, face_img):
+        """Preprocess face image for model input"""
+        # Convert to grayscale and resize to 48x48 (standard for emotion models)
+        gray = cv2.cvtColor(face_img, cv2.COLOR_BGR2GRAY)
+        resized = cv2.resize(gray, (48, 48))
+        normalized = resized / 255.0
+        reshaped = np.reshape(normalized, (1, 48, 48, 1))
+        return reshaped
+    
+    def preprocess_for_specific_model(self, face_img, model_info):
+        """Preprocess face image for a specific model's input requirements"""
+        try:
+            input_shape = model_info['input_shape']
+            
+            # Handle different input shapes
+            if len(input_shape) == 4:  # (batch, height, width, channels)
+                height, width, channels = input_shape[1], input_shape[2], input_shape[3]
+                
+                if channels == 1:  # Grayscale
+                    gray = cv2.cvtColor(face_img, cv2.COLOR_BGR2GRAY)
+                    resized = cv2.resize(gray, (width, height))
+                    normalized = resized / 255.0
+                    reshaped = np.reshape(normalized, (1, height, width, 1))
+                elif channels == 3:  # RGB
+                    rgb = cv2.cvtColor(face_img, cv2.COLOR_BGR2RGB)
+                    resized = cv2.resize(rgb, (width, height))
+                    normalized = resized / 255.0
+                    reshaped = np.reshape(normalized, (1, height, width, 3))
+                else:
+                    # Fallback to standard preprocessing
+                    return self.preprocess_for_models(face_img)
+                
+                return reshaped
+            else:
+                # Fallback to standard preprocessing
+                return self.preprocess_for_models(face_img)
+                
+        except Exception as e:
+            print(f"Error preprocessing for model {model_info['name']}: {e}")
+            return self.preprocess_for_models(face_img)
+    
+    def combine_predictions(self, predictions, weights):
+        """Combine multiple model predictions using weighted averaging"""
+        if len(predictions) == 1:
+            return predictions[0]
+        
+        # Normalize weights
+        total_weight = sum(weights)
+        normalized_weights = [w / total_weight for w in weights]
+        
+        # Weighted average of predictions
+        ensemble_pred = np.zeros_like(predictions[0])
+        for pred, weight in zip(predictions, normalized_weights):
+            ensemble_pred += pred * weight
+        
+        return ensemble_pred
+    
+    def predict_with_model(self, face_img):
+        """Legacy method - predict using single model (backward compatibility)"""
+        if not self.models:
+            return self.predict_basic(face_img)
+        
+        # Use first model for backward compatibility
+        try:
+            preprocessed = self.preprocess_for_models(face_img)
+            result = self.models[0]['model'].predict(preprocessed, verbose=0)
+            emotion_idx = np.argmax(result, axis=1)[0]
+            confidence = result[0][emotion_idx]
+            return self.emotions[emotion_idx], confidence
         except Exception as e:
             print(f"Model prediction error: {e}")
             return self.predict_basic(face_img)
