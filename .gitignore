@@ -45,15 +45,9 @@ Thumbs.db
 
 # Project specific
 temp/
-*.h5
-*.tflite
-*.onnx
 datasets/
 data/train/
 data/test/
-models/*.h5
-models/*.tflite
-models/*.onnx
 
 # Logs
 *.log
@@ -71,11 +65,7 @@ test.jpg
 .ipynb_checkpoints/
 *.ipynb
 
-# Model files (too large for git)
-model_file_30epochs.h5
-emotion_model.tflite
-emotion_model_quantized.tflite
-emotion_model.onnx
+# Large model files are now handled by Git LFS
 
 # Temporary files
 alternative_download.py
