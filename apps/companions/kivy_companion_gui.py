@@ -12,6 +12,10 @@ import time
 import random
 import os
 
+
+"""from bluetooth_sender import send_emotion_ble
+import asyncio"""
+
 from kivy.config import Config
 Config.set('graphics', 'width', '480')
 Config.set('graphics', 'height', '220')
@@ -49,6 +53,7 @@ try:
     from kivy.graphics.instructions import Canvas
     from kivy.core.window import Window
     from kivy.utils import get_color_from_hex
+    from kivy.uix.screenmanager import ScreenManager, Screen, FadeTransition
     KIVY_AVAILABLE = True
     print("✅ Kivy available")
 except ImportError:
@@ -113,7 +118,7 @@ class CompanionCanvas(Widget):
             
             # Draw face outline pixels
             for px, py in face_outline:
-                x = start_x + px * pixel_size
+                x = start_x + px * pixel_size                               
                 y = start_y + (15 - py) * pixel_size  # Flip Y coordinate
                 Rectangle(pos=(x, y), size=(pixel_size, pixel_size))
             
@@ -283,11 +288,29 @@ class CompanionCanvas(Widget):
                 Rectangle(pos=(x, y), size=(pixel_size, pixel_size))
 
 
+class MainScreen(Screen):
+    pass
+
+class ChatScreen(Screen):
+    pass
+
+class ActivitiesScreen(Screen):
+    pass
+
+class StatsScreen(Screen):
+    pass
+
+class SettingsScreen(Screen):
+    pass
+
+
 class KivyCompanionGUI(BoxLayout):
     """Main Kivy Companion GUI class"""
-    
+
     def __init__(self, **kwargs):
         super(KivyCompanionGUI, self).__init__(**kwargs)
+        self.companion_name = "EMO"
+        self.load_companion_name()  # <-- Add this line
         
         # Set dark gray background for the main layout
         with self.canvas.before:
@@ -329,6 +352,9 @@ class KivyCompanionGUI(BoxLayout):
         # Setup GUI
         self.init_ui()
         
+        # Load companion name from file
+        self.load_companion_name()
+        
         # Start companion behavior
         self.start_companion_behavior()
     
@@ -360,9 +386,14 @@ class KivyCompanionGUI(BoxLayout):
         return False
     
     def init_ui(self):
-        """Initialize the retro-style user interface"""
+        from kivy.core.window import Window
+        self.sm = ScreenManager(transition=FadeTransition())
+
+        # --- Main Screen ---
+        main_layout = BoxLayout(orientation='vertical', padding=[0, -35, 0, 0], spacing=0)
+        
         # Title with minimal height
-        title_label = Label(
+        self.title_label = Label(
             text=f">>> {self.companion_name} <<<",
             size_hint_y=None,
             height=20,
@@ -370,7 +401,7 @@ class KivyCompanionGUI(BoxLayout):
             font_size='14sp',
             bold=True
         )
-        self.add_widget(title_label)
+        main_layout.add_widget(self.title_label)
         
         # Status display
         status_layout = BoxLayout(
@@ -388,40 +419,40 @@ class KivyCompanionGUI(BoxLayout):
         )
         status_layout.add_widget(self.emotion_display)
         
-        self.add_widget(status_layout)
+        main_layout.add_widget(status_layout)
         
-        # Main companion display area (larger to accommodate bigger face)
+        # Main companion display area (smaller to fit window)
         companion_layout = BoxLayout(
             orientation='vertical',
             size_hint_y=None,
-            height=400,  # Increased height to match larger canvas
+            height=120,  # Reduced from 400
             padding=[0, 0, 0, 0],
             spacing=0
         )
 
-        # Make the canvas larger to fill the available space
+        # Make the canvas smaller to fit the space
         self.companion_canvas = CompanionCanvas(
             size_hint=(None, None),
-            size=(400, 400)  # Larger canvas to fill more space
+            size=(120, 120)  # Reduced from 400x400
         )
 
         # Center the canvas horizontally only (no vertical spacers)
-        row = BoxLayout(orientation='horizontal', size_hint_y=None, height=400)
+        row = BoxLayout(orientation='horizontal', size_hint_y=None, height=120)
         row.add_widget(Widget(size_hint_x=1))  # Left spacer
         row.add_widget(self.companion_canvas)
         row.add_widget(Widget(size_hint_x=1))  # Right spacer
         companion_layout.add_widget(row)
-        self.add_widget(companion_layout)
+        main_layout.add_widget(companion_layout)
         
         # Speech area
         speech_layout = BoxLayout(
             orientation='vertical',
             size_hint_y=None,
-            height=120,
+            height=60,  # Reduced from 120
             spacing=5
         )
         
-        speech_label = Label(
+        self.speech_label = Label(
             text=f"{self.companion_name} says:",
             size_hint_y=None,
             height=20,
@@ -429,72 +460,54 @@ class KivyCompanionGUI(BoxLayout):
             font_size='10sp',
             bold=True
         )
-        speech_layout.add_widget(speech_label)
+        speech_layout.add_widget(self.speech_label)
         
         self.speech_text = Label(
             text="SYSTEM INITIALIZED. EMOTION DETECTION READY.",
             size_hint_y=None,
-            height=80,
+            height=40,  # Reduced from 80
             color=(1, 1, 1, 1),
-            font_size='12sp',  # Changed from '16sp' to '12sp'
+            font_size='12sp',
             text_size=(None, None),
             halign='center',
             valign='middle'
         )
         speech_layout.add_widget(self.speech_text)
         
-        self.add_widget(speech_layout)
+        main_layout.add_widget(speech_layout)
         
-        # Control buttons - smaller and more compact
+        # Control buttons
         button_layout = BoxLayout(
             orientation='horizontal',
             size_hint_y=None,
-            height=40,  # Reduced from 60 to 40
-            spacing=5   # Reduced spacing from 8 to 5
+            height=40,
+            spacing=5
         )
-        
-        # Camera button
         self.camera_btn = Button(
             text="[ START CAMERA ]" if self.camera_available else "[ CAMERA N/A ]",
             disabled=not self.camera_available,
-            font_size='10sp'  # Reduced from '14sp' to '10sp'
+            font_size='10sp'
         )
         self.camera_btn.bind(on_press=self.toggle_camera)
         button_layout.add_widget(self.camera_btn)
-        
-        # Chat button
-        chat_btn = Button(
-            text="[ CHAT MODE ]",
-            font_size='10sp'  # Reduced from '14sp' to '10sp'
-        )
-        chat_btn.bind(on_press=self.toggle_chat_mode)
+
+        chat_btn = Button(text="[ CHAT MODE ]", font_size='10sp')
+        chat_btn.bind(on_press=lambda x: setattr(self.sm, 'current', 'chat'))
         button_layout.add_widget(chat_btn)
-        
-        # Activities button
-        activities_btn = Button(
-            text="[ ACTIVITIES ]",
-            font_size='10sp'  # Reduced from '14sp' to '10sp'
-        )
-        activities_btn.bind(on_press=self.show_activities)
+
+        activities_btn = Button(text="[ ACTIVITIES ]", font_size='10sp')
+        activities_btn.bind(on_press=lambda x: setattr(self.sm, 'current', 'activities'))
         button_layout.add_widget(activities_btn)
-        
-        # Stats button
-        stats_btn = Button(
-            text="[ STATS ]",
-            font_size='10sp'  # Reduced from '14sp' to '10sp'
-        )
-        stats_btn.bind(on_press=self.show_stats)
+
+        stats_btn = Button(text="[ STATS ]", font_size='10sp')
+        stats_btn.bind(on_press=lambda x: (self.update_stats_screen(), setattr(self.sm, 'current', 'stats')))
         button_layout.add_widget(stats_btn)
-        
-        # Settings button
-        settings_btn = Button(
-            text="[ SETTINGS ]",
-            font_size='10sp'  # Reduced from '14sp' to '10sp'
-        )
-        settings_btn.bind(on_press=self.show_settings)
+
+        settings_btn = Button(text="[ SETTINGS ]", font_size='10sp')
+        settings_btn.bind(on_press=lambda x: setattr(self.sm, 'current', 'settings'))
         button_layout.add_widget(settings_btn)
 
-        self.add_widget(button_layout)
+        main_layout.add_widget(button_layout)
         
         # Chat input (initially hidden)
         self.chat_layout = BoxLayout(
@@ -530,11 +543,179 @@ class KivyCompanionGUI(BoxLayout):
         send_btn.bind(on_press=self.send_chat_message)
         self.chat_layout.add_widget(send_btn)
         
-        self.add_widget(self.chat_layout)
+        main_layout.add_widget(self.chat_layout)
         
-        # Initialize display
-        self.update_companion_display()
-    
+        # Add main screen to ScreenManager
+        main_screen = MainScreen(name='main')
+        main_screen.add_widget(main_layout)
+        self.sm.add_widget(main_screen)
+
+        # --- Chat Screen ---
+        chat_screen = ChatScreen(name='chat')
+        chat_layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
+
+        # Chat log (scrollable)
+        self.chat_log = Label(
+            text="",
+            size_hint_y=None,
+            height=200,
+            font_size='12sp',
+            color=(1, 1, 1, 1),
+            halign='left',
+            valign='top',
+            text_size=(440, None)
+        )
+        self.chat_log.bind(texture_size=lambda instance, value: setattr(self.chat_log, 'height', value[1]))
+
+        scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False)
+        scroll.add_widget(self.chat_log)
+        chat_layout.add_widget(scroll)
+
+        # Chat input area
+        chat_input_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=40, spacing=5)
+        chat_input_layout.add_widget(Label(text="Input:", size_hint_x=None, width=50, color=(1, 1, 1, 1), font_size='10sp'))
+        self.chat_entry = TextInput(multiline=False, font_size='12sp')
+        self.chat_entry.bind(on_text_validate=self.send_chat_message)
+        chat_input_layout.add_widget(self.chat_entry)
+        send_btn = Button(text="[ SEND ]", size_hint_x=None, width=80, font_size='10sp')
+        send_btn.bind(on_press=self.send_chat_message)
+        chat_input_layout.add_widget(send_btn)
+        chat_layout.add_widget(chat_input_layout)
+
+        back_btn = Button(text="[ BACK ]", size_hint_y=None, height=40)
+        back_btn.bind(on_press=lambda x: setattr(self.sm, 'current', 'main'))
+        chat_layout.add_widget(back_btn)
+        chat_screen.add_widget(chat_layout)
+        self.sm.add_widget(chat_screen)
+
+        # --- Activities Screen ---
+        activities_screen = ActivitiesScreen(name='activities')
+        activities_layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
+        activities_layout.add_widget(Label(text=">>> SELECT ACTIVITY <<<", font_size='14sp', bold=True, color=(1, 1, 1, 1), size_hint_y=None, height=40))
+
+        scroll = ScrollView(size_hint=(1, 1))
+        activity_box = BoxLayout(orientation='vertical', spacing=10, size_hint_y=None)
+        activity_box.bind(minimum_height=activity_box.setter("height"))
+        scroll.add_widget(activity_box)
+        activities_layout.add_widget(scroll)
+
+        activities = [
+            ("MOOD BOOST", self.random_mood),
+            ("GIVE GIFT", self.give_gift),
+            ("PLAY MUSIC", self.play_music),
+            ("EXERCISE", self.exercise),
+            ("MEDITATE", self.meditate),
+            ("TELL STORY", self.tell_story)
+        ]
+
+        for name, action in activities:
+            btn = Button(
+                text=f"[ {name} ]",
+                size_hint_y=None,
+                height=40,
+                font_size='12sp'
+            )
+            btn.bind(on_press=lambda x, a=action: self.perform_activity(a))
+            activity_box.add_widget(btn)
+
+        back_btn2 = Button(text="[ BACK ]", size_hint_y=None, height=40)
+        back_btn2.bind(on_press=lambda x: setattr(self.sm, 'current', 'main'))
+        activities_layout.add_widget(back_btn2)
+        activities_screen.add_widget(activities_layout)
+        self.sm.add_widget(activities_screen)
+
+        # --- Stats Screen ---
+        stats_screen = StatsScreen(name='stats')
+        stats_layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
+        stats_layout.add_widget(Label(text=">>> COMPANION STATISTICS <<<", font_size='14sp', bold=True, color=(1, 1, 1, 1), size_hint_y=None, height=40))
+
+        stats_info = f"""COMPANION STATUS:
+================
+NAME: {self.companion_name}
+CURRENT EMOTION: {self.current_emotion}
+HAPPINESS LEVEL: {self.happiness_level}%
+ENERGY LEVEL: {self.energy_level}%
+
+DETECTION STATUS:
+================
+CAMERA ACTIVE: {'YES' if self.detection_active else 'NO'}
+TOTAL MESSAGES: {len(self.conversation_history)}
+LAST INTERACTION: {time.strftime('%H:%M:%S', time.localtime(self.last_interaction))}
+
+SYSTEM INFO:
+============
+SESSION UPTIME: {int((time.time() - self.last_interaction) / 60)} MINUTES
+DETECTION MODEL: {'LOADED' if self.detector else 'NOT AVAILABLE'}
+ACTION UNITS: {'ENABLED' if self.detector else 'DISABLED'}
+"""
+
+        self.stats_label = Label(
+    text=stats_info,
+    halign='left',
+    valign='top',
+    font_size='10sp',
+    color=(1, 1, 1, 1),
+    size_hint_y=None,
+    text_size=(440, None)
+)
+        self.stats_label.bind(texture_size=lambda instance, value: setattr(instance, 'height', value[1]))
+        stats_scroll = ScrollView(size_hint=(1, 1))
+        stats_scroll.add_widget(self.stats_label)
+        stats_layout.add_widget(stats_scroll)
+
+        back_btn3 = Button(text="[ BACK ]", size_hint_y=None, height=40)
+        back_btn3.bind(on_press=lambda x: setattr(self.sm, 'current', 'main'))
+        stats_layout.add_widget(back_btn3)
+        stats_screen.add_widget(stats_layout)
+        self.sm.add_widget(stats_screen)
+
+        # --- Settings Screen ---
+        settings_screen = SettingsScreen(name='settings')
+        settings_layout = BoxLayout(orientation='vertical', spacing=10, padding=20)
+        settings_layout.add_widget(Label(text=">>> COMPANION SETTINGS <<<", size_hint_y=None, height=40, font_size='14sp', bold=True, color=(1, 1, 1, 1)))
+
+        # Name setting
+        name_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=40)
+        name_layout.add_widget(Label(text="NAME:", size_hint_x=None, width=60, color=(1, 1, 1, 1)))
+        self.name_entry = TextInput(text=self.companion_name, multiline=False, size_hint_x=0.7)
+        name_layout.add_widget(self.name_entry)
+
+        def update_name(instance):
+            new_name = self.name_entry.text.strip().upper()
+            if new_name and new_name != self.companion_name:
+                old_name = self.companion_name
+                self.companion_name = new_name
+                self.save_companion_name()  # <-- Add this line
+                self.update_companion_display()
+                self.companion_speak(f"NAME CHANGED FROM {old_name} TO {self.companion_name}")
+                # Save new name to file
+                self.save_companion_name()
+
+        name_btn = Button(text="[ UPDATE ]", size_hint_x=None, width=80, font_size='10sp')
+        name_btn.bind(on_press=update_name)
+        name_layout.add_widget(name_btn)
+        settings_layout.add_widget(name_layout)
+
+        # Reset button
+        reset_btn = Button(text="[ RESET COMPANION ]", size_hint_y=None, height=40, font_size='12sp')
+        def reset_companion(instance):
+            self.happiness_level = 75
+            self.energy_level = 80
+            self.current_emotion = "Neutral"
+            self.conversation_history = []
+            self.update_companion_display()
+            self.companion_speak("SYSTEM RESET COMPLETE. ALL PARAMETERS RESTORED.")
+        reset_btn.bind(on_press=reset_companion)
+        settings_layout.add_widget(reset_btn)
+
+        back_btn4 = Button(text="[ BACK ]", size_hint_y=None, height=40, font_size='12sp')
+        back_btn4.bind(on_press=lambda x: setattr(self.sm, 'current', 'main'))
+        settings_layout.add_widget(back_btn4)
+        settings_screen.add_widget(settings_layout)
+        self.sm.add_widget(settings_screen)
+
+        self.add_widget(self.sm)
+
     def _update_rect(self, instance, value):
         """Update background rectangle when size/position changes"""
         self.rect.pos = instance.pos
@@ -544,13 +725,18 @@ class KivyCompanionGUI(BoxLayout):
         """Update the companion's visual display"""
         self.companion_canvas.set_emotion(self.current_emotion)
         self.emotion_display.text = f"EMOTION: {self.current_emotion.upper()}"
+        if hasattr(self, 'title_label'):
+            self.title_label.text = f">>> {self.companion_name} <<<"
+        if hasattr(self, 'speech_label'):
+            self.speech_label.text = f"{self.companion_name} says:"
     
-    def companion_speak(self, message):
+    def companion_speak(self, message, chat_only=False):
         """Make the companion speak"""
         timestamp = time.strftime("%H:%M:%S")
         retro_message = f"[{timestamp}] >>> {message.upper()}"
-        self.speech_text.text = retro_message
-        self.speech_text.text_size = (self.speech_text.width, None)
+        if not chat_only:
+            self.speech_text.text = retro_message
+            self.speech_text.text_size = (self.speech_text.width, None)
         self.last_interaction = time.time()
     
     def toggle_chat_mode(self, instance):
@@ -571,19 +757,34 @@ class KivyCompanionGUI(BoxLayout):
         """Send a chat message"""
         message = self.chat_entry.text.strip()
         if message:
+        # Add user message to chat log with an extra blank line above
+            self.append_chat_log(f"\n\n[YOU] {message}")  
             response = self.generate_chat_response(message)
-            self.companion_speak(f"YOU SAID: {message}. {response}")
+        # Add companion's reply to chat log, with a blank line before
+            self.append_chat_log(f"\n[{self.companion_name}] {response}")
             self.chat_entry.text = ""
-            
-            # Update companion based on chat
+        # Update companion based on chat
             self.last_interaction = time.time()
             self.happiness_level = min(100, self.happiness_level + 2)
             self.update_companion_display()
+
+
+    def append_chat_log(self, text):
+        """Append a message to the chat log in the chat page"""
+        if self.chat_log.text:
+            self.chat_log.text += "\n" + text
+        else:
+            self.chat_log.text = text
+        # Auto-scroll to bottom
+        self.chat_log.texture_update()
     
     def generate_chat_response(self, user_message):
         """Generate a response to user's chat message"""
         message_lower = user_message.lower()
         
+        # Family sadness and apology (respond if family member is sad, even if not explicit about fault)
+        if any(word in message_lower for word in ['mother', 'father', 'mom', 'dad', 'sibling', 'sister', 'brother']) and 'sad' in message_lower:
+            return "IF YOUR MOTHER, FATHER, OR SIBLINGS ARE SAD, GIVE THEM A BIG HUG AND TELL THEM YOU CARE. IF YOU DID SOMETHING WRONG, SAY SORRY TOO. SOMETIMES A HUG AND KIND WORDS CAN HELP A LOT!"
         # Emotion-related responses
         if any(word in message_lower for word in ['sad', 'down', 'depressed', 'upset']):
             return "I'M SORRY YOU'RE FEELING THAT WAY. I'M HERE FOR YOU!"
@@ -752,6 +953,14 @@ class KivyCompanionGUI(BoxLayout):
         self.current_emotion = emotion
         self.respond_to_emotion(emotion)
         self.update_companion_display()
+ # Send to ESP32 via BLE
+    """try:
+        asyncio.run(send_emotion_ble(emotion))
+    except RuntimeError:
+        # If already in an event loop (e.g. on some platforms), use create_task
+        loop = asyncio.get_event_loop()
+        loop.create_task(send_emotion_ble(emotion))"""
+        
     
     def respond_to_emotion(self, emotion, manual=False):
         """Respond to detected or manual emotion"""
@@ -829,8 +1038,18 @@ class KivyCompanionGUI(BoxLayout):
     
     def show_activities(self, instance):
         """Show activities popup"""
-        content = BoxLayout(orientation='vertical', spacing=10, padding=20)
-        
+    # Root layout (vertical)
+        root = BoxLayout(orientation='vertical', spacing=10, padding=20)
+
+    # Create popup first so we can reference it
+        popup = Popup(
+            title=">>> ACTIVITIES <<<",
+            content=root,
+            size_hint=(0.8, 0.8),
+            auto_dismiss=False
+    )
+
+    # Title
         title = Label(
             text=">>> SELECT ACTIVITY <<<",
             size_hint_y=None,
@@ -838,9 +1057,17 @@ class KivyCompanionGUI(BoxLayout):
             font_size='14sp',
             bold=True,
             color=(1, 1, 1, 1)
-        )
-        content.add_widget(title)
-        
+    )
+        root.add_widget(title)
+
+    # Scrollable container for activities
+        scroll = ScrollView(size_hint=(1, 1))
+        activity_box = BoxLayout(orientation='vertical', spacing=10, size_hint_y=None)
+        activity_box.bind(minimum_height=activity_box.setter("height"))
+        scroll.add_widget(activity_box)
+        root.add_widget(scroll)
+
+    # Activities list
         activities = [
             ("MOOD BOOST", self.random_mood),
             ("GIVE GIFT", self.give_gift),
@@ -848,41 +1075,40 @@ class KivyCompanionGUI(BoxLayout):
             ("EXERCISE", self.exercise),
             ("MEDITATE", self.meditate),
             ("TELL STORY", self.tell_story)
-        ]
-        
+    ]
+
         for name, action in activities:
             btn = Button(
                 text=f"[ {name} ]",
                 size_hint_y=None,
                 height=40,
                 font_size='12sp'
-            )
+        )
             btn.bind(on_press=lambda x, a=action: self.run_activity(a, popup))
-            content.add_widget(btn)
-        
+            activity_box.add_widget(btn)
+
+    # Close button
         close_btn = Button(
             text="[ CLOSE ]",
             size_hint_y=None,
             height=40,
             font_size='12sp'
-        )
-        
-        popup = Popup(
-            title=">>> ACTIVITIES <<<",
-            content=content,
-            size_hint=(0.8, 0.8),
-            auto_dismiss=False
-        )
-        
+    )
         close_btn.bind(on_press=popup.dismiss)
-        content.add_widget(close_btn)
-        
+        root.add_widget(close_btn)
+
         popup.open()
+
+
     
     def run_activity(self, activity_func, popup):
         """Run an activity and close popup"""
         activity_func()
         popup.dismiss()
+    def perform_activity(self, activity_func):
+        """Run the activity, show feedback, and return to main screen."""
+        activity_func()
+        self.sm.current = 'main'
     
     def show_stats(self, instance):
         """Show stats popup"""
@@ -920,12 +1146,18 @@ ACTION UNITS: {'ENABLED' if self.detector else 'DISABLED'}
         
         stats_label = Label(
             text=stats_info,
-            text_size=(None, None),
             halign='left',
             valign='top',
             font_size='10sp',
-            color=(1, 1, 1, 1)
+            color=(1, 1, 1, 1),
+            size_hint_y=None,
+            text_size=(440, None)
         )
+        stats_label.bind(
+        texture_size=lambda instance, size: setattr(instance, 'height', size[1])
+        
+)
+
         content.add_widget(stats_label)
         
         close_btn = Button(
@@ -945,11 +1177,10 @@ ACTION UNITS: {'ENABLED' if self.detector else 'DISABLED'}
         content.add_widget(close_btn)
         
         popup.open()
-    
     def show_settings(self, instance):
         """Show settings popup"""
         content = BoxLayout(orientation='vertical', spacing=10, padding=20)
-        
+
         title = Label(
             text=">>> COMPANION SETTINGS <<<",
             size_hint_y=None,
@@ -959,25 +1190,28 @@ ACTION UNITS: {'ENABLED' if self.detector else 'DISABLED'}
             color=(1, 1, 1, 1)
         )
         content.add_widget(title)
-        
+
         # Name setting
         name_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=40)
         name_layout.add_widget(Label(text="NAME:", size_hint_x=None, width=60, color=(1, 1, 1, 1)))
-        
         name_entry = TextInput(
             text=self.companion_name,
             multiline=False,
             size_hint_x=0.7
         )
         name_layout.add_widget(name_entry)
-        
+
         def update_name(instance):
             new_name = name_entry.text.strip().upper()
             if new_name and new_name != self.companion_name:
                 old_name = self.companion_name
                 self.companion_name = new_name
+                self.save_companion_name()  # <-- Add this line
+                self.update_companion_display()
                 self.companion_speak(f"NAME CHANGED FROM {old_name} TO {self.companion_name}")
-        
+                # Save new name to file
+                self.save_companion_name()
+
         name_btn = Button(
             text="[ UPDATE ]",
             size_hint_x=None,
@@ -986,9 +1220,9 @@ ACTION UNITS: {'ENABLED' if self.detector else 'DISABLED'}
         )
         name_btn.bind(on_press=update_name)
         name_layout.add_widget(name_btn)
-        
+
         content.add_widget(name_layout)
-        
+
         # Reset button
         reset_btn = Button(
             text="[ RESET COMPANION ]",
@@ -996,7 +1230,7 @@ ACTION UNITS: {'ENABLED' if self.detector else 'DISABLED'}
             height=40,
             font_size='12sp'
         )
-        
+
         def reset_companion(instance):
             self.happiness_level = 75
             self.energy_level = 80
@@ -1005,26 +1239,26 @@ ACTION UNITS: {'ENABLED' if self.detector else 'DISABLED'}
             self.update_companion_display()
             self.companion_speak("SYSTEM RESET COMPLETE. ALL PARAMETERS RESTORED.")
             popup.dismiss()
-        
+
         reset_btn.bind(on_press=reset_companion)
         content.add_widget(reset_btn)
-        
+
         close_btn = Button(
             text="[ CLOSE ]",
             size_hint_y=None,
             height=40,
             font_size='12sp'
         )
-        
+
         popup = Popup(
             title=">>> SETTINGS <<<",
             content=content,
             size_hint=(0.8, 0.6)
         )
-        
+
         close_btn.bind(on_press=popup.dismiss)
         content.add_widget(close_btn)
-        
+
         popup.open()
     
     # Activity methods
@@ -1130,6 +1364,48 @@ ACTION UNITS: {'ENABLED' if self.detector else 'DISABLED'}
         
         # Update display
         self.update_companion_display()
+
+    def update_stats_screen(self):
+        stats_info = f"""COMPANION STATUS:
+================
+NAME: {self.companion_name}
+CURRENT EMOTION: {self.current_emotion}
+HAPPINESS LEVEL: {self.happiness_level}%
+ENERGY LEVEL: {self.energy_level}%
+
+DETECTION STATUS:
+================
+CAMERA ACTIVE: {'YES' if self.detection_active else 'NO'}
+TOTAL MESSAGES: {len(self.conversation_history)}
+LAST INTERACTION: {time.strftime('%H:%M:%S', time.localtime(self.last_interaction))}
+
+SYSTEM INFO:
+============
+SESSION UPTIME: {int((time.time() - self.last_interaction) / 60)} MINUTES
+DETECTION MODEL: {'LOADED' if self.detector else 'NOT AVAILABLE'}
+ACTION UNITS: {'ENABLED' if self.detector else 'DISABLED'}
+"""
+        if hasattr(self, 'stats_label'):
+            self.stats_label.text = stats_info
+
+    def save_companion_name(self):
+        """Save the companion's name to a file."""
+        try:
+            with open("companion_name.txt", "w", encoding="utf-8") as f:
+                f.write(self.companion_name)
+        except Exception as e:
+            print(f"Error saving companion name: {e}")
+
+    def load_companion_name(self):
+        """Load the companion's name from a file, if it exists."""
+        try:
+            if os.path.exists("companion_name.txt"):
+                with open("companion_name.txt", "r", encoding="utf-8") as f:
+                    name = f.read().strip()
+                    if name:
+                        self.companion_name = name
+        except Exception as e:
+            print(f"Error loading companion name: {e}")
 
 
 class CompanionApp(App):
