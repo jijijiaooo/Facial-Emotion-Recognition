@@ -2,13 +2,13 @@ import requests
 
 ESP32_IP = "192.168.0.107"  # <-- Replace with your ESP32's IP address
 EMOJI_MAP = {
-    "Happy": "??",
-    "Sad": "??",
-    "Angry": "??",
-    "Fear": "??",
-    "Surprise": "??",
-    "Disgust": "??",
-    "Neutral": "??"
+    "Happy": "^‿^",
+    "Sad": "T_T",
+    "Angry": "ò_ó",
+    "Fear": "ó﹏ò｡",
+    "Surprise": "°ロ°",
+    "Disgust": ">_<",
+    "Neutral": "._."
 }
 
 def send_emotion_wifi(emotion):
