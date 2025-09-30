@@ -8,7 +8,7 @@ EMOJI_MAP = {
     "Fear": "O_O",
     "Surprise": "O.O",
     "Disgust": ">_<",
-    "Neutral": "._."
+    "Neutral": "-_-"
 }
 
 def send_emotion_wifi(emotion):
@@ -24,3 +24,4 @@ def send_emotion_wifi(emotion):
 # Example usage:
 if __name__ == "__main__":
     send_emotion_wifi("Happy")
+
