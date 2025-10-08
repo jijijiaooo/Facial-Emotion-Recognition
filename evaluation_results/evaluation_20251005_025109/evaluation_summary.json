@@ -1,0 +1,68 @@
+{
+  "evaluation_date": "2025-10-05T02:53:09.677245",
+  "test_data_path": "data/raf_db/processed/test",
+  "total_samples": 350,
+  "overall_accuracy": 0.38,
+  "failed_predictions": 0,
+  "metrics_per_emotion": [
+    {
+      "emotion": "angry",
+      "precision": 0.47619047619047616,
+      "recall": 0.4,
+      "f1_score": 0.43478260869565216,
+      "support": 50
+    },
+    {
+      "emotion": "disgust",
+      "precision": 0.8181818181818182,
+      "recall": 0.36,
+      "f1_score": 0.5,
+      "support": 50
+    },
+    {
+      "emotion": "fear",
+      "precision": 0.2,
+      "recall": 0.18,
+      "f1_score": 0.18947368421052632,
+      "support": 50
+    },
+    {
+      "emotion": "happy",
+      "precision": 0.5,
+      "recall": 0.7,
+      "f1_score": 0.5833333333333334,
+      "support": 50
+    },
+    {
+      "emotion": "neutral",
+      "precision": 0.3125,
+      "recall": 0.6,
+      "f1_score": 0.410958904109589,
+      "support": 50
+    },
+    {
+      "emotion": "sad",
+      "precision": 0.2318840579710145,
+      "recall": 0.32,
+      "f1_score": 0.2689075630252101,
+      "support": 50
+    },
+    {
+      "emotion": "surprise",
+      "precision": 0.8333333333333334,
+      "recall": 0.1,
+      "f1_score": 0.17857142857142858,
+      "support": 50
+    }
+  ],
+  "macro_avg": {
+    "precision": 0.4817270979538061,
+    "recall": 0.37999999999999995,
+    "f1_score": 0.3665753602779627
+  },
+  "weighted_avg": {
+    "precision": 0.481727097953806,
+    "recall": 0.38,
+    "f1_score": 0.3665753602779628
+  }
+}
