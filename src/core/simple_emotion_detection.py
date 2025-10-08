@@ -48,8 +48,9 @@ class SimpleEmotionDetector:
     def _init_emotion_patterns(self):
         """Initialize enhanced emotion detection patterns with improved AU discrimination"""
         # Enhanced patterns to address specific confusion issues:
-        # - Surprise vs Happy (mouth opening context)
-        # - Fear vs Surprise (eye widening distinction) 
+        # - Surprise vs Fear: Fear = Eyes wide (AU5), Surprise = Brows raised + Mouth open (AU1/AU2 + AU26)
+        # - Fear focuses on eye widening as PRIMARY indicator
+        # - Surprise focuses on brow raising + mouth opening (eyes can be wide but not required)
         # - Sad vs Angry (furrowing intensity)
         return {
             'Happy': {
@@ -68,14 +69,14 @@ class SimpleEmotionDetector:
                 'inhibitors': [('AU12', 8), ('AU6', 10)]  # Simple happiness inhibitors
             },
             'Fear': {
-                'primary': [('AU5', 12)],  # Eyes wide - PRIMARY fear indicator (lowered threshold for better detection)
-                'secondary': [('AU1', 4), ('AU2', 4), ('AU7', 10), ('AU20', 6)],  # Brow raise, lid tightener, lip stretcher (optional)
-                'inhibitors': [('AU12', 12), ('AU26', 20)]  # Block strong smile and full jaw drop (that's surprise)
+                'primary': [('AU5', 10)],  # Eyes wide open - PRIMARY and DEFINITIVE fear indicator (lowered from 12 to 10)
+                'secondary': [('AU1', 4), ('AU2', 4), ('AU20', 6), ('AU7', 10)],  # Brow raise, lip stretcher optional
+                'inhibitors': [('AU12', 12)]  # Only block strong smile - removed jaw drop inhibitor since surprise needs it
             },
             'Surprise': {
-                'primary': [('AU1', 3), ('AU2', 5), ('AU26', 15)],  # Brow raise AND jaw drop required - mouth must be fully opened
-                'secondary': [('AU5', 10), ('AU25', 12)],  # Eye widening and lips parting are bonuses
-                'inhibitors': []  # No inhibitors for surprise
+                'primary': [('AU1', 3), ('AU2', 5), ('AU26', 10)],  # Brow raise AND mouth open - reduced jaw drop from 15 to 10
+                'secondary': [('AU5', 8), ('AU25', 12)],  # Eye widening is OPTIONAL bonus, not required
+                'inhibitors': []  # No inhibitors for surprise - eyes can be wide (that's okay)
             },
             'Disgust': {
                 'primary': [('AU9', 50)],  # Much lower nose crunch threshold - more realistic
