@@ -13,9 +13,6 @@ import random
 import os
 
 
-"""from bluetooth_sender import send_emotion_ble
-import asyncio"""
-
 from kivy.config import Config
 Config.set('graphics', 'width', '480')
 Config.set('graphics', 'height', '220')
@@ -368,7 +365,8 @@ class KivyCompanionGUI(BoxLayout):
             
         try:
             self.detector = SimpleEmotionDetector()
-            print("✅ Emotion detector initialized")
+            self.detector.gui_mode = True  # Enable more responsive detection for GUI
+            print("✅ Emotion detector initialized (GUI mode enabled)")
         except Exception as e:
             print(f"⚠️ Could not initialize emotion detector: {e}")
             self.detector = None
@@ -892,8 +890,9 @@ ACTION UNITS: {'ENABLED' if self.detector else 'DISABLED'}
                                 emotion, confidence = self.detector.predict_emotion(face_img)
                                 
                                 current_time = time.time()
-                                if (confidence > 0.7 and 
-                                    current_time - last_emotion_time > emotion_cooldown):
+                                # Lower confidence threshold and shorter cooldown for more responsive GUI
+                                if (confidence > 0.2 and 
+                                    current_time - last_emotion_time > 0.3):  # 300ms cooldown instead of 1s
                                     if emotion != self.current_emotion:
                                         Clock.schedule_once(
                                             lambda dt, e=emotion: self.on_emotion_detected(e)
@@ -930,10 +929,10 @@ ACTION UNITS: {'ENABLED' if self.detector else 'DISABLED'}
                         
                 except Exception as e:
                     consecutive_errors += 1
-                    time.sleep(0.05)
+                    time.sleep(0.03)  # Reduced sleep time for errors
                     continue
                 
-                time.sleep(0.03)
+                time.sleep(0.02)  # Reduced from 0.03 to 0.02 for higher frame rate
             
             if consecutive_errors >= max_errors:
                 Clock.schedule_once(
@@ -955,12 +954,15 @@ ACTION UNITS: {'ENABLED' if self.detector else 'DISABLED'}
         self.current_emotion = emotion
         self.respond_to_emotion(emotion)
         self.update_companion_display()
-        # Send to ESP32 via Wi-Fi
+        # Send to ESP32 via Wi-Fi in a background thread
+        threading.Thread(target=self._send_emotion_wifi_safe, args=(emotion,), daemon=True).start()
+
+    def _send_emotion_wifi_safe(self, emotion):
         try:
             send_emotion_wifi(emotion)
         except Exception as e:
             print(f"WiFi send error: {e}")
-    
+        
     def respond_to_emotion(self, emotion, manual=False):
         """Respond to detected or manual emotion"""
         responses = {
