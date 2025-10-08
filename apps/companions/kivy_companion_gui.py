@@ -13,9 +13,6 @@ import random
 import os
 
 
-"""from bluetooth_sender import send_emotion_ble
-import asyncio"""
-
 from kivy.config import Config
 Config.set('graphics', 'width', '480')
 Config.set('graphics', 'height', '220')
@@ -59,6 +56,8 @@ try:
 except ImportError:
     KIVY_AVAILABLE = False
     print("❌ Kivy not available")
+
+from apps.companions.wifi_sender import send_emotion_wifi
 
 class CompanionCanvas(Widget):
     """Custom widget for drawing the companion's pixelated face"""
@@ -955,15 +954,15 @@ ACTION UNITS: {'ENABLED' if self.detector else 'DISABLED'}
         self.current_emotion = emotion
         self.respond_to_emotion(emotion)
         self.update_companion_display()
- # Send to ESP32 via BLE
-    """try:
-        asyncio.run(send_emotion_ble(emotion))
-    except RuntimeError:
-        # If already in an event loop (e.g. on some platforms), use create_task
-        loop = asyncio.get_event_loop()
-        loop.create_task(send_emotion_ble(emotion))"""
+        # Send to ESP32 via Wi-Fi in a background thread
+        threading.Thread(target=self._send_emotion_wifi_safe, args=(emotion,), daemon=True).start()
+
+    def _send_emotion_wifi_safe(self, emotion):
+        try:
+            send_emotion_wifi(emotion)
+        except Exception as e:
+            print(f"WiFi send error: {e}")
         
-    
     def respond_to_emotion(self, emotion, manual=False):
         """Respond to detected or manual emotion"""
         responses = {
