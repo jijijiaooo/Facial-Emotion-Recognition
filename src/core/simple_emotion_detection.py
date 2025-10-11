@@ -87,17 +87,15 @@ class SimpleEmotionDetector:
 
     def load_all_models(self):
         """Load all available models for ensembling."""
+        # Check if TensorFlow should be disabled (e.g., on Raspberry Pi)
+        if os.environ.get('DISABLE_TENSORFLOW') == '1':
+            print("⚠️ TensorFlow is disabled via DISABLE_TENSORFLOW environment variable")
+            print("   Using rule-based Action Unit detection only")
+            return []
+        
         model_files = [
             'models/ensemble_raf_db1_20250904_124505.pkl',
             'models/raf_db_simple_cnn.h5',
-            'models/raf_db1_custom_20250904_113432_best.h5',
-            'models/raf_db1_custom_20250904_113432_final.h5',
-            'models/raf_db1_mobilenet_20250904_001856_best.h5',
-            'models/raf_db1_mobilenet_20250904_001856_final.h5',
-            'models/raf_db1_mobilenet_20250904_001856_finetuned_best.h5',
-            'models/raf_db1_resnet_20250903_213606_best.h5',
-            'models/raf_db1_resnet_20250903_213606_final.h5',
-            'models/raf_db1_resnet_20250903_213606_finetuned_best.h5'
         ]
         loaded_models = []
         for model_path in model_files:
