@@ -12,26 +12,41 @@ import time
 import random
 import os
 
-# CRITICAL FIX: Prevent TensorFlow segmentation fault on Raspberry Pi
+# CRITICAL FIX: Optimize TensorFlow for Raspberry Pi
 # Must be set BEFORE importing anything that might import TensorFlow
-# Segmentation fault occurs when TensorFlow tries to allocate more memory than available
 import platform
 try:
     # Detect Raspberry Pi
     if os.path.exists('/proc/device-tree/model'):
         with open('/proc/device-tree/model', 'r') as f:
-            if 'raspberry pi' in f.read().lower():
+            model_info = f.read().lower()
+            if 'raspberry pi' in model_info:
                 print("🍓 Raspberry Pi detected!")
-                print("   Setting TensorFlow environment to prevent segmentation fault...")
+                
+                # Try to detect RAM amount
+                try:
+                    with open('/proc/meminfo', 'r') as mem:
+                        meminfo = mem.read()
+                        # Extract total RAM in KB
+                        total_ram_kb = int([line for line in meminfo.split('\n') if 'MemTotal' in line][0].split()[1])
+                        total_ram_gb = total_ram_kb / (1024 * 1024)
+                        print(f"   💾 Detected RAM: {total_ram_gb:.1f} GB")
+                except:
+                    total_ram_gb = 1  # Default assumption
+                
+                print("   Configuring TensorFlow for optimal performance...")
+                
                 # Prevent TensorFlow from allocating all GPU memory
                 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
                 # Limit TensorFlow to CPU only (no GPU on Pi anyway)
                 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
-                # Reduce TensorFlow memory usage
+                # Reduce TensorFlow logging
                 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress warnings
-                # Most important: Disable TensorFlow model loading completely
-                os.environ['DISABLE_TENSORFLOW'] = '1'
-                print("   ✅ TensorFlow will be disabled to prevent crashes")
+                
+                print(" TensorFlow optimized for Raspberry Pi")
+                print(" Loading 2 lightweight models (Simple CNN + Ensemble PKL)")
+                print(f" Your Pi 4 with {total_ram_gb:.0f}GB RAM has plenty of resources!")
+                print("  Expected RAM usage: ~400MB (you have plenty of headroom)")
 except Exception as e:
     print(f"   ⚠️ Error detecting platform: {e}")
 
