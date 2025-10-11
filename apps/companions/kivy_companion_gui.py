@@ -12,8 +12,30 @@ import time
 import random
 import os
 
+# CRITICAL FIX: Prevent TensorFlow segmentation fault on Raspberry Pi
+# Must be set BEFORE importing anything that might import TensorFlow
+# Segmentation fault occurs when TensorFlow tries to allocate more memory than available
+import platform
+try:
+    # Detect Raspberry Pi
+    if os.path.exists('/proc/device-tree/model'):
+        with open('/proc/device-tree/model', 'r') as f:
+            if 'raspberry pi' in f.read().lower():
+                print("🍓 Raspberry Pi detected!")
+                print("   Setting TensorFlow environment to prevent segmentation fault...")
+                # Prevent TensorFlow from allocating all GPU memory
+                os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
+                # Limit TensorFlow to CPU only (no GPU on Pi anyway)
+                os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+                # Reduce TensorFlow memory usage
+                os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress warnings
+                # Most important: Disable TensorFlow model loading completely
+                os.environ['DISABLE_TENSORFLOW'] = '1'
+                print("   ✅ TensorFlow will be disabled to prevent crashes")
+except Exception as e:
+    print(f"   ⚠️ Error detecting platform: {e}")
+
 # Configure Kivy BEFORE any other Kivy imports (critical for Raspberry Pi)
-import os
 os.environ['KIVY_NO_CONSOLELOG'] = '1'  # Reduce console spam on Raspberry Pi
 os.environ['KIVY_WINDOW'] = 'sdl2'  # Use SDL2 backend (better Raspberry Pi support)
 
@@ -32,14 +54,23 @@ Config.set('graphics', 'multisamples', '0')  # Disable antialiasing for speed
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-# Try to import emotion detection
+# Try to import emotion detection (with segmentation fault protection)
 try:
+    # If TensorFlow is disabled, import will succeed but models won't load
     from src.core.simple_emotion_detection import SimpleEmotionDetector
     EMOTION_DETECTION_AVAILABLE = True
-    print("✅ Emotion detection available")
-except ImportError:
+    if os.environ.get('DISABLE_TENSORFLOW') == '1':
+        print("✅ Emotion detection available (TensorFlow disabled for safety)")
+    else:
+        print("✅ Emotion detection available")
+except ImportError as e:
     EMOTION_DETECTION_AVAILABLE = False
-    print("⚠️ Emotion detection not available")
+    print(f"⚠️ Emotion detection not available: {e}")
+    SimpleEmotionDetector = None
+except Exception as e:
+    EMOTION_DETECTION_AVAILABLE = False
+    print(f"❌ Error loading emotion detection: {e}")
+    print("   This may be due to TensorFlow compatibility issues")
     SimpleEmotionDetector = None
 
 # Kivy imports
