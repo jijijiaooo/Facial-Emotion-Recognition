@@ -12,12 +12,23 @@ import time
 import random
 import os
 
+# Configure Kivy BEFORE any other Kivy imports (critical for Raspberry Pi)
+import os
+os.environ['KIVY_NO_CONSOLELOG'] = '1'  # Reduce console spam on Raspberry Pi
+os.environ['KIVY_WINDOW'] = 'sdl2'  # Use SDL2 backend (better Raspberry Pi support)
 
 from kivy.config import Config
+# Set window properties BEFORE importing other Kivy modules
+Config.set('kivy', 'window_icon', '')  # Prevent unnamed window error
 Config.set('graphics', 'width', '480')
 Config.set('graphics', 'height', '220')
 Config.set('graphics', 'resizable', False)
 Config.set('graphics', 'clearcolor', '0.16, 0.16, 0.16, 1')  # Dark gray background
+Config.set('graphics', 'borderless', '0')  # Show window border
+Config.set('input', 'mouse', 'mouse,multitouch_on_demand')  # Fix touch issues on Raspberry Pi
+# Raspberry Pi specific optimizations
+Config.set('graphics', 'maxfps', '30')  # Limit FPS for Raspberry Pi
+Config.set('graphics', 'multisamples', '0')  # Disable antialiasing for speed
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
@@ -1411,6 +1422,9 @@ ACTION UNITS: {'ENABLED' if self.detector else 'DISABLED'}
 
 class CompanionApp(App):
     """Main Kivy application"""
+    
+    # Set app title (fixes "unnamed window" issue)
+    title = "Emotion Companion"
     
     def build(self):
         # Set window background color to dark gray
