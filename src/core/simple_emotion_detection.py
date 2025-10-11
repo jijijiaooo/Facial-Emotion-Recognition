@@ -1,10 +1,6 @@
 #!/usr/bin/env python3
 """
-Simple Emotion Detection - No External Dependenci            'Disgust': {
-                'primary': [('AU9', 30), ('AU10', 12)],  # Nose wrinkler and upper lip raiser
-                'secondary': [('AU4', 20), ('AU7', 10), ('AU16', 8), ('AU24', 12)],  # Brow lowerer, lid tightener, lower lip depressor, lip pressor
-                'inhibitors': [('AU12', 15), ('AU26', 25)]  # Block lip corner pulling and strong jaw drop
-            }rks without Haar cascade files or complex models
+Simple Emotion Detection - Supports Keras, PKL, and TFLite models
 """
 
 import cv2
@@ -12,6 +8,23 @@ import numpy as np
 import os
 import sys
 import pickle
+
+# Try to import TFLite
+try:
+    import tflite_runtime.interpreter as tflite
+    TFLITE_AVAILABLE = True
+    TFLITE_RUNTIME = True
+    print("TFLite Runtime available (optimized)")
+except ImportError:
+    try:
+        import tensorflow as tf
+        TFLITE_AVAILABLE = True
+        TFLITE_RUNTIME = False
+        print("TensorFlow Lite available")
+    except ImportError:
+        TFLITE_AVAILABLE = False
+        TFLITE_RUNTIME = False
+        print("TFLite not available - .tflite models will be skipped")
 
 class SimpleEmotionDetector:
     def __init__(self):
@@ -99,7 +112,37 @@ class SimpleEmotionDetector:
         ]
         loaded_models = []
         for model_path in model_files:
-            if model_path.endswith('.h5') and os.path.exists(model_path):
+            if model_path.endswith('.tflite') and os.path.exists(model_path):
+                # TensorFlow Lite model
+                if not TFLITE_AVAILABLE:
+                    print(f"⚠️ Skipping {model_path} - TFLite not available")
+                    continue
+                try:
+                    if TFLITE_RUNTIME:
+                        interpreter = tflite.Interpreter(model_path=model_path)
+                    else:
+                        interpreter = tf.lite.Interpreter(model_path=model_path)
+                    
+                    interpreter.allocate_tensors()
+                    input_details = interpreter.get_input_details()
+                    output_details = interpreter.get_output_details()
+                    input_shape = input_details[0]['shape']
+                    
+                    model_info = {
+                        'type': 'tflite',
+                        'interpreter': interpreter,
+                        'input_details': input_details,
+                        'output_details': output_details,
+                        'input_shape': input_shape,
+                        'path': model_path
+                    }
+                    loaded_models.append(model_info)
+                    print(f"✅ Loaded TFLite model: {model_path}")
+                    print(f"   Input shape: {input_shape}, dtype: {input_details[0]['dtype']}")
+                except Exception as e:
+                    print(f"❌ Failed to load TFLite model {model_path}: {e}")
+                    
+            elif model_path.endswith('.h5') and os.path.exists(model_path):
                 try:
                     from tensorflow import keras
                     model = keras.models.load_model(model_path)
@@ -111,9 +154,9 @@ class SimpleEmotionDetector:
                         'path': model_path
                     }
                     loaded_models.append(model_info)
-                    print(f"Loaded Keras model: {model_path} (input shape: {input_shape})")
+                    print(f"✅ Loaded Keras model: {model_path} (input shape: {input_shape})")
                 except Exception as e:
-                    print(f"Failed to load Keras model {model_path}: {e}")
+                    print(f"❌ Failed to load Keras model {model_path}: {e}")
             elif model_path.endswith('.pkl') and os.path.exists(model_path):
                 try:
                     with open(model_path, 'rb') as f:
@@ -125,11 +168,11 @@ class SimpleEmotionDetector:
                         'path': model_path
                     }
                     loaded_models.append(model_info)
-                    print(f"Loaded pickle model: {model_path}")
+                    print(f"✅ Loaded pickle model: {model_path}")
                 except Exception as e:
-                    print(f"Failed to load pickle model {model_path}: {e}")
+                    print(f"❌ Failed to load pickle model {model_path}: {e}")
         if not loaded_models:
-            print("No models loaded - using basic detection")
+            print("⚠️ No models loaded - using basic detection")
         return loaded_models
 
     def init_face_detection(self):
@@ -211,7 +254,7 @@ class SimpleEmotionDetector:
         resized = cv2.resize(gray, (48, 48))
         normalized = resized / 255.0
         reshaped = np.reshape(normalized, (1, 48, 48, 1))
-        return reshaped
+        return reshaped.astype(np.float32)
     
     def preprocess_face_224x224(self, face_img):
         """Resize and normalize face image for 224x224x3 models (e.g., ResNet, MobileNet)."""
@@ -220,7 +263,7 @@ class SimpleEmotionDetector:
         resized = cv2.resize(rgb, (224, 224))
         normalized = resized / 255.0
         reshaped = np.reshape(normalized, (1, 224, 224, 3))
-        return reshaped
+        return reshaped.astype(np.float32)
 
     def predict_emotion(self, face_img):
         """Predict emotion using ensemble of models or fallback to basic rules."""
@@ -232,10 +275,46 @@ class SimpleEmotionDetector:
             for model_info in self.models:
                 try:
                     model_type = model_info['type']
-                    model = model_info['model']
-                    input_shape = model_info['input_shape']
                     
-                    if model_type == 'keras':
+                    if model_type == 'tflite':
+                        # TensorFlow Lite model - handle FIRST before accessing 'model' key
+                        interpreter = model_info['interpreter']
+                        input_details = model_info['input_details']
+                        output_details = model_info['output_details']
+                        input_shape = model_info['input_shape']
+                        
+                        # Preprocess based on input shape
+                        if input_shape is not None and len(input_shape) >= 3:
+                            height, width = input_shape[1], input_shape[2]
+                            if height == 224 and width == 224:
+                                img = self.preprocess_face_224x224(face_img)
+                            elif height == 48 and width == 48:
+                                img = self.preprocess_face_48x48(face_img)
+                            else:
+                                print(f"⚠️ Unsupported TFLite input shape: {input_shape}")
+                                continue
+                        else:
+                            img = self.preprocess_face_48x48(face_img)
+                        
+                        # Set input tensor
+                        interpreter.set_tensor(input_details[0]['index'], img)
+                        
+                        # Run inference
+                        interpreter.invoke()
+                        
+                        # Get output tensor
+                        output_data = interpreter.get_tensor(output_details[0]['index'])
+                        pred = output_data[0]
+                        
+                        idx = int(np.argmax(pred))
+                        votes.append(idx)
+                        probs.append(pred)
+                        
+                    elif model_type == 'keras':
+                        # Keras model
+                        model = model_info['model']
+                        input_shape = model_info['input_shape']
+                        
                         # Use appropriate preprocessing based on input shape
                         if input_shape and len(input_shape) >= 3:
                             height, width = input_shape[1], input_shape[2]
@@ -256,8 +335,8 @@ class SimpleEmotionDetector:
                         probs.append(pred[0])
                         
                     elif model_type == 'sklearn':
-                        # For sklearn models, use 48x48 preprocessing and flatten
-                        img = self.preprocess_face_48x48(face_img)
+                        # Sklearn model
+                        model = model_info['model']
                         flat_img = img.flatten().reshape(1, -1)
                         if hasattr(model, 'predict_proba'):
                             pred = model.predict_proba(flat_img)
@@ -267,8 +346,45 @@ class SimpleEmotionDetector:
                         else:
                             idx = int(model.predict(flat_img)[0])
                             votes.append(idx)
+                    
+                    elif model_type == 'tflite':
+                        # TensorFlow Lite model
+                        interpreter = model_info['interpreter']
+                        input_details = model_info['input_details']
+                        output_details = model_info['output_details']
+                        input_shape = model_info['input_shape']
+                        
+                        # Preprocess based on input shape
+                        if input_shape and len(input_shape) >= 3:
+                            height, width = input_shape[1], input_shape[2]
+                            if height == 224 and width == 224:
+                                img = self.preprocess_face_224x224(face_img)
+                            elif height == 48 and width == 48:
+                                img = self.preprocess_face_48x48(face_img)
+                            else:
+                                print(f"⚠️ Unsupported TFLite input shape: {input_shape}")
+                                continue
+                        else:
+                            img = self.preprocess_face_48x48(face_img)
+                        
+                        # Set input tensor
+                        interpreter.set_tensor(input_details[0]['index'], img)
+                        
+                        # Run inference
+                        interpreter.invoke()
+                        
+                        # Get output tensor
+                        output_data = interpreter.get_tensor(output_details[0]['index'])
+                        pred = output_data[0]
+                        
+                        idx = int(np.argmax(pred))
+                        votes.append(idx)
+                        probs.append(pred)
                 except Exception as e:
+                    import traceback
                     print(f"Model prediction error ({model_info.get('path', 'unknown')}): {e}")
+                    if self.debug_mode:
+                        traceback.print_exc()
             if votes:
                 # Use weighted voting based on confidence instead of simple majority
                 emotion_weights = [0.0] * len(self.emotions)
@@ -284,7 +400,7 @@ class SimpleEmotionDetector:
                 
                 # Weighted voting with enhanced bias correction
                 for vote, prob in zip(votes, probs):
-                    weight = prob[vote]  # Use confidence as weight
+                    weight = float(prob[vote])  # Use confidence as weight (ensure scalar)
                     
                     # Apply aggressive bias corrections for common overdetections
                     if vote == 6:  # Surprise - apply correction to ALL Surprise votes
