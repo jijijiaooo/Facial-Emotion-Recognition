@@ -95,7 +95,7 @@ class SimpleEmotionDetector:
         
         model_files = [
             'models/ensemble_raf_db1_20250904_124505.pkl',
-            'models/raf_db_simple_cnn.h5',
+            'models/raf_db_simple_cnn.tflite',
         ]
         loaded_models = []
         for model_path in model_files:
