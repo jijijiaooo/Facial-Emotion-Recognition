@@ -56,7 +56,9 @@ os.environ['KIVY_WINDOW'] = 'sdl2'  # Use SDL2 backend (better Raspberry Pi supp
 
 from kivy.config import Config
 # Set window properties BEFORE importing other Kivy modules
-Config.set('kivy', 'window_icon', '')  # Prevent unnamed window error
+# CRITICAL: Set window title to prevent "unnamed window" error
+Config.set('kivy', 'window_icon', '')  # Empty icon to prevent issues
+Config.set('graphics', 'window_state', 'visible')  # Ensure window is visible
 Config.set('graphics', 'width', '480')
 Config.set('graphics', 'height', '220')
 Config.set('graphics', 'resizable', False)
@@ -66,6 +68,9 @@ Config.set('input', 'mouse', 'mouse,multitouch_on_demand')  # Fix touch issues o
 # Raspberry Pi specific optimizations
 Config.set('graphics', 'maxfps', '30')  # Limit FPS for Raspberry Pi
 Config.set('graphics', 'multisamples', '0')  # Disable antialiasing for speed
+
+# Must write config changes
+Config.write()
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
@@ -1471,10 +1476,14 @@ class CompanionApp(App):
     
     # Set app title (fixes "unnamed window" issue)
     title = "Emotion Companion"
+    # Set empty icon to prevent icon-related errors
+    icon = ''
     
     def build(self):
         # Set window background color to dark gray
         Window.clearcolor = (0.16, 0.16, 0.16, 1)
+        # Explicitly set window caption/title
+        Window.set_title("Emotion Companion")
         return KivyCompanionGUI()
   
 # Mark first todo as completed since we have the basic structure
