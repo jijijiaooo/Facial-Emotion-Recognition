@@ -74,24 +74,47 @@ Config.write()
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-# Try to import emotion detection (with segmentation fault protection)
+def detect_raspberry_pi():
+    """Detect if running on Raspberry Pi"""
+    try:
+        if os.path.exists('/proc/device-tree/model'):
+            with open('/proc/device-tree/model', 'r') as f:
+                model_info = f.read().lower()
+                return 'raspberry pi' in model_info
+    except:
+        pass
+    return False
+
+# Try to import emotion detection (optimized for Raspberry Pi)
 try:
-    # If TensorFlow is disabled, import will succeed but models won't load
-    from src.core.simple_emotion_detection import SimpleEmotionDetector
-    EMOTION_DETECTION_AVAILABLE = True
-    if os.environ.get('DISABLE_TENSORFLOW') == '1':
-        print("✅ Emotion detection available (TensorFlow disabled for safety)")
+    # Check if we're on Raspberry Pi for optimized performance
+    is_pi = detect_raspberry_pi()
+    
+    if is_pi:
+        # Use pure TFLite detector for better Pi performance
+        try:
+            from src.core.pure_tflite_emotion_detection import PureTFLiteEmotionDetector as EmotionDetector
+            print("✅ Using optimized TFLite-only detector (Raspberry Pi mode)")
+        except ImportError:
+            # Fallback to original detector
+            from src.core.simple_emotion_detection import SimpleEmotionDetector as EmotionDetector
+            print("✅ Using standard detector (TFLite fallback)")
     else:
-        print("✅ Emotion detection available")
+        # Use original detector on desktop systems
+        from src.core.simple_emotion_detection import SimpleEmotionDetector as EmotionDetector
+        print("✅ Using standard detector (Desktop mode)")
+    
+    EMOTION_DETECTION_AVAILABLE = True
+    
 except ImportError as e:
     EMOTION_DETECTION_AVAILABLE = False
     print(f"⚠️ Emotion detection not available: {e}")
-    SimpleEmotionDetector = None
+    EmotionDetector = None
 except Exception as e:
     EMOTION_DETECTION_AVAILABLE = False
     print(f"❌ Error loading emotion detection: {e}")
     print("   This may be due to TensorFlow compatibility issues")
-    SimpleEmotionDetector = None
+    EmotionDetector = None
 
 # Kivy imports
 try:
@@ -420,15 +443,24 @@ class KivyCompanionGUI(BoxLayout):
         self.start_companion_behavior()
     
     def init_detector(self):
-        """Safely initialize the emotion detector"""
+        """Safely initialize the emotion detector (optimized for Pi)"""
         if not EMOTION_DETECTION_AVAILABLE:
             print("⚠️ Emotion detection not available")
             return
             
         try:
-            self.detector = SimpleEmotionDetector()
-            self.detector.gui_mode = True  # Enable more responsive detection for GUI
-            print("✅ Emotion detector initialized (GUI mode enabled)")
+            self.detector = EmotionDetector()
+            
+            # Enable GUI mode if available (for responsiveness)
+            if hasattr(self.detector, 'gui_mode'):
+                self.detector.gui_mode = True
+                
+            # Enable debug mode on Pi for troubleshooting
+            if detect_raspberry_pi() and hasattr(self.detector, 'debug_mode'):
+                self.detector.debug_mode = True
+                
+            detector_type = "TFLite-only" if detect_raspberry_pi() else "Standard"
+            print(f"✅ {detector_type} emotion detector initialized (GUI optimized)")
         except Exception as e:
             print(f"⚠️ Could not initialize emotion detector: {e}")
             self.detector = None
@@ -911,7 +943,7 @@ ACTION UNITS: {'ENABLED' if self.detector else 'DISABLED'}
         self.companion_speak("CAMERA DEACTIVATED. EMOTION DETECTION OFFLINE.")
     
     def camera_detection_loop(self):
-        """Main camera detection loop"""
+        """Main camera detection loop (optimized for Raspberry Pi)"""
         cap = None
         try:
             cap = cv2.VideoCapture(0)
@@ -920,12 +952,36 @@ ACTION UNITS: {'ENABLED' if self.detector else 'DISABLED'}
                 self.detection_active = False
                 return
             
+            # Raspberry Pi optimizations
+            is_pi = detect_raspberry_pi()
+            if is_pi:
+                # Lower resolution for better Pi performance
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                cap.set(cv2.CAP_PROP_FPS, 15)  # Limit FPS on Pi
+                print("📱 Applied Raspberry Pi camera optimizations (640x480@15fps)")
+            else:
+                # Full resolution on desktop
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+                cap.set(cv2.CAP_PROP_FPS, 30)
+            
             last_emotion_time = 0
             last_face_time = time.time()
             consecutive_errors = 0
             max_errors = 10
-            min_face_size = 60
-            emotion_cooldown = 1.0
+            
+            # Adaptive parameters based on platform
+            if is_pi:
+                min_face_size = 40  # Smaller faces OK on Pi (lower res)
+                emotion_cooldown = 0.5  # Faster response on Pi
+                skip_frames = 2  # Process every 3rd frame on Pi
+            else:
+                min_face_size = 60
+                emotion_cooldown = 0.3
+                skip_frames = 0  # Process all frames on desktop
+                
+            frame_counter = 0
             
             while self.detection_active and consecutive_errors < max_errors:
                 try:
@@ -936,33 +992,55 @@ ACTION UNITS: {'ENABLED' if self.detector else 'DISABLED'}
                         continue
                     
                     consecutive_errors = 0
+                    frame_counter += 1
+                    
+                    # Frame skipping for Pi performance
+                    if is_pi and (frame_counter % (skip_frames + 1)) != 0:
+                        continue
+                    
                     frame = cv2.flip(frame, 1)  # Mirror the frame
+                    
+                    # Resize frame on Pi for faster processing
+                    if is_pi:
+                        display_frame = frame.copy()
+                        frame = cv2.resize(frame, (320, 240))  # Smaller for face detection
+                    else:
+                        display_frame = frame
                     
                     faces = self.detector.detect_faces(frame)
                     face_found = False
                     
                     if faces and len(faces) > 0:
                         x, y, w, h = faces[0]
+                        
+                        # Scale coordinates back if we resized
+                        if is_pi:
+                            scale_x = display_frame.shape[1] / frame.shape[1]
+                            scale_y = display_frame.shape[0] / frame.shape[0]
+                            x, w = int(x * scale_x), int(w * scale_x)
+                            y, h = int(y * scale_y), int(h * scale_y)
+                        
                         if w > min_face_size and h > min_face_size:
                             face_found = True
                             last_face_time = time.time()
-                            face_img = frame[y:y+h, x:x+w]
+                            face_img = display_frame[y:y+h, x:x+w]
                             
                             if face_img.size > 0:
                                 emotion, confidence = self.detector.predict_emotion(face_img)
                                 
                                 current_time = time.time()
-                                # Lower confidence threshold and shorter cooldown for more responsive GUI
-                                if (confidence > 0.2 and 
-                                    current_time - last_emotion_time > 0.3):  # 300ms cooldown instead of 1s
+                                # Adaptive confidence and cooldown
+                                conf_threshold = 0.15 if is_pi else 0.2  # Lower threshold on Pi
+                                if (confidence > conf_threshold and 
+                                    current_time - last_emotion_time > emotion_cooldown):
                                     if emotion != self.current_emotion:
                                         Clock.schedule_once(
                                             lambda dt, e=emotion: self.on_emotion_detected(e)
                                         )
                                         last_emotion_time = current_time
                             
-                            cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
-                            cv2.putText(frame, f"{self.current_emotion}", (x, y-10), 
+                            cv2.rectangle(display_frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+                            cv2.putText(display_frame, f"{self.current_emotion}", (x, y-10), 
                                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
                     
                     # Fallback to Neutral if no face detected for 3 seconds
@@ -973,9 +1051,14 @@ ACTION UNITS: {'ENABLED' if self.detector else 'DISABLED'}
                             )
                             last_emotion_time = time.time()
                     
-                    cv2.putText(frame, "Press 'q' to stop camera", (10, 30), 
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-                    cv2.imshow(f'{self.companion_name} - Camera View', frame)
+                    # Add performance info for Pi
+                    status_text = "Press 'q' to stop"
+                    if is_pi:
+                        status_text += f" | Pi Mode: {frame.shape[1]}x{frame.shape[0]}"
+                    
+                    cv2.putText(display_frame, status_text, (10, 30), 
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+                    cv2.imshow(f'{self.companion_name} - Camera View', display_frame)
                     
                     if cv2.getWindowProperty(f'{self.companion_name} - Camera View', cv2.WND_PROP_VISIBLE) < 1:
                         # Window was closed by user
@@ -991,10 +1074,15 @@ ACTION UNITS: {'ENABLED' if self.detector else 'DISABLED'}
                         
                 except Exception as e:
                     consecutive_errors += 1
-                    time.sleep(0.03)  # Reduced sleep time for errors
+                    error_sleep = 0.1 if is_pi else 0.03  # Longer sleep on Pi after errors
+                    time.sleep(error_sleep)
                     continue
                 
-                time.sleep(0.02)  # Reduced from 0.03 to 0.02 for higher frame rate
+                # Adaptive frame rate
+                if is_pi:
+                    time.sleep(0.05)  # ~20 FPS on Pi (more conservative)
+                else:
+                    time.sleep(0.02)  # ~50 FPS on desktop
             
             if consecutive_errors >= max_errors:
                 Clock.schedule_once(
