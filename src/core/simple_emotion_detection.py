@@ -8,6 +8,8 @@ import numpy as np
 import os
 import sys
 import pickle
+from apps.companions.wifi_sender import send_emotion_wifi
+import threading
 
 # Try to import TFLite
 try:
@@ -1006,7 +1008,24 @@ class SimpleEmotionDetector:
             self.current_fps = self.fps_counter
             self.fps_counter = 0
             self.fps_start = current_time
-    
+
+    def on_emotion_detected(self, emotion):
+        """Handle emotion detected from camera"""
+        self.current_emotion = emotion
+        # If you have these methods, otherwise remove them:
+        if hasattr(self, "respond_to_emotion"):
+            self.respond_to_emotion(emotion)
+        if hasattr(self, "update_companion_display"):
+            self.update_companion_display()
+        # Send to ESP32 via Wi-Fi in a background thread
+        threading.Thread(target=self._send_emotion_wifi_safe, args=(emotion,), daemon=True).start()
+
+    def _send_emotion_wifi_safe(self, emotion):
+        try:
+            send_emotion_wifi(emotion)
+        except Exception as e:
+            print(f"WiFi send error: {e}")
+
     def run(self):
         """Main detection loop"""
         # Initialize camera
@@ -1043,6 +1062,9 @@ class SimpleEmotionDetector:
                     
                     # Predict emotion
                     emotion, confidence = self.predict_emotion(face_img)
+                    
+                    # Handle detected emotion
+                    self.on_emotion_detected(emotion)
                     
                     # Draw results
                     color = self.colors.get(emotion, (255, 255, 255))
