@@ -1125,16 +1125,24 @@ def main():
     
     detector = SimpleEmotionDetector()
 
-    # --- Start WebSocket server in background thread ---
-    try:
-        from src.core.websocket_emotion_server import start_server
-        import threading
-        threading.Thread(target=start_server, args=(detector, '0.0.0.0', 8080), daemon=True).start()
-        print("WebSocket emotion server started on ws://0.0.0.0:8080")
-    except Exception as e:
-        print(f"Could not start WebSocket server: {e}")
+# --- Start WebSocket server in background thread ---
+try:
+    from websocket_emotion_server import start_server
+    import threading
 
-    detector.run()
+    detector = SimpleEmotionDetector()
+
+    threading.Thread(
+        target=start_server,
+        args=(detector, '0.0.0.0', 8080),
+        daemon=True
+    ).start()
+
+    print("✅ WebSocket emotion server started on ws://0.0.0.0:8080")
+
+    detector.run()  # Optional — runs detection loop locally if implemented
+except Exception as e:
+    print(f"❌ Could not start WebSocket server: {e}")
 
 if __name__ == "__main__":
     main()
