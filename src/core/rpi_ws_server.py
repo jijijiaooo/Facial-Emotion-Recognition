@@ -1,50 +1,37 @@
 import asyncio
 import websockets
-import threading
-from simple_emotion_detection import SimpleEmotionDetector
+import json
 
-connected_clients = set()
+connected = set()
+latest_emotion = {"emotion": "Neutral", "emoji": "-_-", "confidence": 0}
 
-async def emotion_broadcaster(detector):
-    """Continuously detect emotion and broadcast to clients."""
-    cap = detector.init_camera()
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            continue
-        faces = detector.detect_faces(frame)
-        if faces:
-            x, y, w, h = faces[0]
-            face_img = frame[y:y+h, x:x+w]
-            emotion, confidence = detector.predict_emotion(face_img)
-            # Broadcast emotion to all clients
-            for ws in connected_clients.copy():
-                try:
-                    await ws.send(emotion)
-                except Exception:
-                    connected_clients.discard(ws)
-        await asyncio.sleep(0.2)  # Adjust as needed
-
-async def handler(websocket, path):
-    connected_clients.add(websocket)
+async def emotion_handler(websocket, path):
+    connected.add(websocket)
     try:
-        async for _ in websocket:
-            pass  # You can handle incoming messages here if needed
+        # Send the latest emotion on connect
+        await websocket.send(json.dumps(latest_emotion))
+        async for message in websocket:
+            try:
+                data = json.loads(message)
+                if "emotion" in data:
+                    global latest_emotion
+                    # Accept and store all fields (emotion, emoji, confidence, etc.)
+                    latest_emotion = data
+                    print("Received emotion:", data)
+                    # Broadcast to all clients
+                    for ws in connected:
+                        if ws.open:
+                            await ws.send(json.dumps(latest_emotion))
+            except Exception as e:
+                print("Error:", e)
     finally:
-        connected_clients.discard(websocket)
+        connected.remove(websocket)
 
-def start_server(detector, host='0.0.0.0', port=8080):
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    start_server = websockets.serve(handler, host, port)
-    loop.run_until_complete(start_server)
-    loop.create_task(emotion_broadcaster(detector))
-    loop.run_forever()
-
-# REMOVE or COMMENT OUT this block:
-# if __name__ == "__main__":
-#     detector = SimpleEmotionDetector()
-#     threading.Thread(target=start_server, args=(detector,), daemon=True).start()
-#     print("WebSocket emotion SERVER running on ws://0.0.0.0:8080")
-#     while True:
-#         pass  # Keep main thread alive
+if __name__ == "__main__":
+    import sys
+    port = 8080 if len(sys.argv) < 2 else int(sys.argv[1])
+    print(f"WebSocket server running on ws://0.0.0.0:{port}")
+    asyncio.get_event_loop().run_until_complete(
+        websockets.serve(emotion_handler, "0.0.0.0", port)
+    )
+    asyncio.get_event_loop().run_forever()
