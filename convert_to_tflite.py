@@ -37,10 +37,24 @@ def convert_h5_to_tflite(h5_path, tflite_path, quantize=True):
         print("🔄 Converting to TensorFlow Lite...")
         converter = tf.lite.TFLiteConverter.from_keras_model(model)
         
+        # CRITICAL: Set compatibility for older TFLite Runtime versions (Raspberry Pi)
+        # This ensures the model works with older TFLite runtime on Raspberry Pi 4B
+        converter.target_spec.supported_ops = [
+            tf.lite.OpsSet.TFLITE_BUILTINS,  # Enable TFLite builtin ops
+        ]
+        
+        # Set to lowest opset version for maximum compatibility
+        # This prevents "version 12" errors on older TFLite runtimes
+        converter._experimental_lower_tensor_list_ops = False
+        
         if quantize:
             print("   ⚙️  Applying dynamic range quantization (reduces size by ~4x)")
             # Dynamic range quantization - reduces model size significantly
             converter.optimizations = [tf.lite.Optimize.DEFAULT]
+            
+        # Ensure compatibility with older TFLite versions
+        print("   🔧 Setting compatibility for Raspberry Pi TFLite Runtime...")
+        converter.target_spec.supported_types = [tf.float32]
         
         # Convert the model
         tflite_model = converter.convert()
