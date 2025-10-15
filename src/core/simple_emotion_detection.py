@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Simple Emotion Detection - Supports Keras, PKL, and TFLite models
+Simple Emotion Detection - Supports Keras, PKL, and TFLite models (periodt)
 """
 
 import cv2
