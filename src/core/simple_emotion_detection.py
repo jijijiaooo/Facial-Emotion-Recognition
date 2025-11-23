@@ -8,6 +8,20 @@ import numpy as np
 import os
 import sys
 import pickle
+import threading
+import time
+from datetime import datetime
+
+# Firebase Admin SDK (optional)
+try:
+    import firebase_admin
+    from firebase_admin import credentials, db
+    FIREBASE_AVAILABLE = True
+except Exception:
+    firebase_admin = None
+    credentials = None
+    db = None
+    FIREBASE_AVAILABLE = False
 
 # Try to import TFLite
 try:
@@ -58,6 +72,24 @@ class SimpleEmotionDetector:
         # Advanced AU combination patterns
         self.emotion_patterns = self._init_emotion_patterns()
 
+        # Firebase integration state
+        self.firebase_enabled = False
+        self.firebase_app = None
+        self.running_event = threading.Event()  # Controlled by /control/state in RTDB
+        self.meta = {
+            'total_detections': 0,
+            'last_detection_time': None,
+            'last_emotion': None,
+            'last_confidence': None,
+            'running_state': 'stopped'
+        }
+
+        # Attempt to initialize Firebase if a service account is available
+        try:
+            self._init_firebase_from_env()
+        except Exception as e:
+            print(f"Firebase init warning: {e}")
+
     def _init_emotion_patterns(self):
         """Initialize enhanced emotion detection patterns with improved AU discrimination"""
         # Enhanced patterns to address specific confusion issues:
@@ -98,6 +130,149 @@ class SimpleEmotionDetector:
             }
         }
 
+    # ----------------------
+    # Firebase helpers
+    # ----------------------
+    def _init_firebase_from_env(self):
+        """Initialize Firebase Admin using service account from env or defaults.
+
+        Environment variables used:
+        - FIREBASE_SERVICE_ACCOUNT: path to service account JSON (default: ./firebase_service_account.json)
+        - FIREBASE_DB_URL: Realtime Database URL (required to enable Firebase)
+        """
+        if not FIREBASE_AVAILABLE:
+            raise RuntimeError("firebase_admin package not available")
+
+        sa_path = os.environ.get('FIREBASE_SERVICE_ACCOUNT', 'firebase_service_account.json')
+        # Default to the RTDB URL provided by the user if env var not set
+        db_url = os.environ.get('FIREBASE_DB_URL', 'https://pelioscope-emotion-default-rtdb.asia-southeast1.firebasedatabase.app/')
+
+        if not db_url:
+            raise RuntimeError('FIREBASE_DB_URL not set; Firebase RTDB disabled')
+
+        if not os.path.exists(sa_path):
+            raise RuntimeError(f'Service account file not found: {sa_path}')
+
+        # Initialize app only once
+        try:
+            # firebase_admin.get_app will raise if not initialized
+            firebase_admin.get_app()
+            app = firebase_admin.get_app()
+        except Exception:
+            cred = credentials.Certificate(sa_path)
+            app = firebase_admin.initialize_app(cred, {'databaseURL': db_url})
+
+        self.firebase_app = app
+        self.firebase_enabled = True
+
+        # Start control polling thread to watch /control/state
+        t = threading.Thread(target=self._control_poller, daemon=True)
+        t.start()
+        print(f"Firebase initialized, DB URL: {db_url}. Control poller started.")
+
+    def _control_poller(self):
+        """Poll /control/state in RTDB and set/clear the running event.
+
+        Because the Admin Python SDK doesn't provide a streaming listener for RTDB,
+        we poll at a configurable interval (1s). Accepts values 'start'/'stop',
+        booleans, or 'running'/'stopped'. Updates /meta.running_state accordingly.
+        """
+        if not self.firebase_enabled:
+            return
+
+        last_state = None
+        while True:
+            try:
+                ref = db.reference('/control/state')
+                state = ref.get()
+
+                normalized = None
+                if isinstance(state, bool):
+                    normalized = 'start' if state else 'stop'
+                elif isinstance(state, str):
+                    normalized = state.strip().lower()
+                elif state is None:
+                    normalized = 'stop'
+
+                if normalized != last_state:
+                    last_state = normalized
+                    if normalized in ('start', 'running', 'true', '1'):
+                        self.running_event.set()
+                        self.meta['running_state'] = 'running'
+                        try:
+                            db.reference('/meta').update({'running_state': 'running', 'last_start_time': datetime.utcnow().isoformat()})
+                        except Exception:
+                            pass
+                        if self.debug_mode:
+                            print("Control: START received from RTDB")
+                    else:
+                        self.running_event.clear()
+                        self.meta['running_state'] = 'stopped'
+                        try:
+                            db.reference('/meta').update({'running_state': 'stopped', 'last_stop_time': datetime.utcnow().isoformat()})
+                        except Exception:
+                            pass
+                        if self.debug_mode:
+                            print("Control: STOP received from RTDB")
+
+            except Exception as e:
+                if self.debug_mode:
+                    print(f"Control poller error: {e}")
+
+            time.sleep(1.0)
+
+    def _write_emotion_output(self, emotion, confidence, aus=None):
+        """Push a detected emotion event to `/emotion_output` in RTDB.
+
+        Payload contains timestamp, emotion, confidence and optional AU summary.
+        """
+        if not self.firebase_enabled:
+            return
+
+        payload = {
+            'timestamp': datetime.utcnow().isoformat(),
+            'emotion': emotion,
+            'confidence': float(confidence)
+        }
+        if aus:
+            # Keep AU payload small: include top few AUs
+            try:
+                # pick top 8 AUs by absolute value
+                top = sorted(aus.items(), key=lambda x: abs(x[1]), reverse=True)[:8]
+                payload['aus'] = {k: float(v) for k, v in top}
+            except Exception:
+                payload['aus'] = {}
+
+        try:
+            ref = db.reference('/emotion_output')
+            ref.push(payload)
+        except Exception as e:
+            if self.debug_mode:
+                print(f"Failed to push emotion_output: {e}")
+
+    def _update_meta(self, emotion, confidence):
+        """Update /meta counters and last-seen info in RTDB."""
+        if not self.firebase_enabled:
+            return
+
+        try:
+            self.meta['total_detections'] = int(self.meta.get('total_detections', 0)) + 1
+            self.meta['last_detection_time'] = datetime.utcnow().isoformat()
+            self.meta['last_emotion'] = emotion
+            self.meta['last_confidence'] = float(confidence)
+
+            # Send to RTDB
+            db.reference('/meta').update({
+                'total_detections': self.meta['total_detections'],
+                'last_detection_time': self.meta['last_detection_time'],
+                'last_emotion': self.meta['last_emotion'],
+                'last_confidence': self.meta['last_confidence'],
+                'running_state': self.meta.get('running_state', 'stopped')
+            })
+        except Exception as e:
+            if self.debug_mode:
+                print(f"Failed to update meta: {e}")
+
     def load_all_models(self):
         """Load all available models for ensembling."""
         # Check if TensorFlow should be disabled (e.g., on Raspberry Pi)
@@ -107,7 +282,7 @@ class SimpleEmotionDetector:
             return []
         
         model_files = [
-            'models/ensemble_raf_db1_20250904_124505.pkl',
+            'models/ensemble_raf_db_simple_cnn.h5',
             'models/raf_db_simple_cnn.tflite',
         ]
         loaded_models = []
@@ -1041,8 +1216,23 @@ class SimpleEmotionDetector:
                     # Extract face region
                     face_img = frame[y:y+h, x:x+w]
                     
-                    # Predict emotion
-                    emotion, confidence = self.predict_emotion(face_img)
+                    # Predict emotion only when controller signals 'start'
+                    emotion, confidence = (None, None)
+                    if self.running_event.is_set():
+                        emotion, confidence = self.predict_emotion(face_img)
+
+                        # Write to Firebase (if enabled)
+                        try:
+                            if self.firebase_enabled and emotion is not None:
+                                self._write_emotion_output(emotion, float(confidence), self.last_aus)
+                                self._update_meta(emotion, float(confidence))
+                        except Exception as e:
+                            if self.debug_mode:
+                                print(f"Firebase write error: {e}")
+                    else:
+                        # When not running, show Idle state
+                        emotion = 'Idle'
+                        confidence = 0.0
                     
                     # Draw results
                     color = self.colors.get(emotion, (255, 255, 255))
