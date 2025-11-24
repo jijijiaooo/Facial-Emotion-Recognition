@@ -1,93 +1,142 @@
 #include <WiFi.h>
-#include <Firebase_ESP_Client.h>
+#include <HTTPClient.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
 // -------------------------------
-// WIFI
+// WIFI CONFIG
 // -------------------------------
 #define WIFI_SSID "Trisha"
 #define WIFI_PASS "trisha22"
 
 // -------------------------------
-// OLED
+// OLED CONFIG
 // -------------------------------
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
 // -------------------------------
-// FIREBASE CONFIG
+// FIREBASE REST API CONFIG
 // -------------------------------
-#define FIREBASE_API_KEY "AIzaSyBr5bJ26yvC5ZKl2k3mt97oSqKBjS5uQoM"
-#define FIREBASE_DB_URL "https://pelioscope-emotion-default-rtdb.asia-southeast1.firebasedatabase.app"
-#define FIREBASE_SECRET "KkUdkmPAy48Vh8NQKXqROs8qieqL2bEmSVDUNN6w"
-
-FirebaseData fbdo;
-FirebaseAuth auth;
-FirebaseConfig config;
+String firebaseSecret = "KkUdkmPAy48Vh8NQKXqROs8qieqL2bEmSVDUNN6w";
+String firebaseURL = "https://pelioscope-emotion-default-rtdb.asia-southeast1.firebasedatabase.app/meta/last_emotion.json?auth=";
 
 String lastEmotion = "";
 
-void setupDisplay(String msg) {
+// -------------------------------
+// Helper: capitalize first letter
+// -------------------------------
+String capitalizeFirstLetter(String str) {
+  if (str.length() == 0) return str;
+  str.toLowerCase();
+  str[0] = toupper(str[0]);
+  return str;
+}
+
+// -------------------------------
+// OLED helper function (centered)
+// -------------------------------
+void showEmotion(const String &emotionRaw) {
+  String emotion = capitalizeFirstLetter(emotionRaw);
   display.clearDisplay();
-  display.setTextSize(1);
+
+  // Map emotion to emoji
+  String emoji = "";
+  if (emotion == "Happy") emoji = "^_^";
+  else if (emotion == "Sad") emoji = "T_T";
+  else if (emotion == "Angry") emoji = ">:[";
+  else if (emotion == "Disgust") emoji = ">_<";
+  else if (emotion == "Fear") emoji = "O_O";
+  else if (emotion == "Surprise") emoji = "O.O";
+  else if (emotion == "Neutral") emoji = "-_-";
+  else emoji = emotion; // fallback
+
+  // Display emotion name at top center
+  display.setTextSize(2);
   display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 10);
-  display.println(msg);
+  int16_t x1, y1;
+  uint16_t w, h;
+
+  display.getTextBounds(emotion, 0, 0, &x1, &y1, &w, &h);
+  display.setCursor((SCREEN_WIDTH - w) / 2, 0);
+  display.println(emotion);
+
+  // Display emoji at bottom center
+  display.setTextSize(3);
+  display.getTextBounds(emoji, 0, 0, &x1, &y1, &w, &h);
+  display.setCursor((SCREEN_WIDTH - w) / 2, SCREEN_HEIGHT - h - 5); // 5px padding from bottom
+  display.println(emoji);
+
   display.display();
 }
 
+// -------------------------------
+// Read from Firebase via REST
+// -------------------------------
+String getEmotion() {
+  HTTPClient http;
+  String url = firebaseURL + firebaseSecret;
+
+  http.begin(url);
+  int code = http.GET();
+
+  if (code == 200) {
+    String result = http.getString();
+    http.end();
+
+    result.trim();
+    result.replace("\"", ""); // remove quotes
+    return result;
+  } else {
+    http.end();
+    return "";
+  }
+}
+
+// -------------------------------
+// Setup
+// -------------------------------
 void setup() {
   Serial.begin(115200);
 
-  // OLED
+  // OLED Init
   if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
     Serial.println("OLED failed");
     while (true);
   }
-  setupDisplay("Starting...");
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setCursor(0, 10);
+  display.println("Starting...");
+  display.display();
 
   // WIFI
   WiFi.begin(WIFI_SSID, WIFI_PASS);
-  setupDisplay("Connecting WiFi...");
   while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
+    delay(300);
     Serial.print(".");
   }
-  setupDisplay("WiFi Connected!");
 
-  // FIREBASE
-  config.api_key = FIREBASE_API_KEY;
-  config.database_url = FIREBASE_DB_URL;
-  config.signer.tokens.legacy_token = FIREBASE_SECRET;
-
-  Firebase.begin(&config, &auth);
-  Firebase.reconnectWiFi(true);
-
-  setupDisplay("Firebase Ready");
-  delay(500);
+  Serial.println("\nWiFi Connected!");
+  display.clearDisplay();
+  display.setCursor(0, 10);
+  display.println("WiFi Connected!");
+  display.display();
 }
 
+// -------------------------------
+// Loop
+// -------------------------------
 void loop() {
-  // Read /emotion_output/latest/value
-  if (Firebase.RTDB.getString(&fbdo, "/emotion_output/latest/value")) {
-    String emotion = fbdo.stringData();
+  String emotion = getEmotion();
 
-    if (emotion != lastEmotion) {
-      lastEmotion = emotion;
-
-      Serial.println("Emotion: " + emotion);
-
-      // Show on OLED
-      display.clearDisplay();
-      display.setTextSize(2);
-      display.setCursor(0, 20);
-      display.print(emotion);
-      display.display();
-    }
+  if (emotion != "" && emotion != lastEmotion) {
+    lastEmotion = emotion;
+    Serial.println("Emotion: " + emotion);
+    showEmotion(emotion);
   }
 
-  delay(400); // polling interval
+  delay(500);
 }
