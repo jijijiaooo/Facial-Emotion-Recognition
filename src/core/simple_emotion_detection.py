@@ -22,6 +22,8 @@ except Exception:
     credentials = None
     db = None
     FIREBASE_AVAILABLE = False
+# Optional debug flag controlled by env var FIREBASE_DEBUG=1
+FIREBASE_DEBUG = os.environ.get('FIREBASE_DEBUG', '0').strip().lower() in ('1', 'true', 'yes')
 
 # Try to import TFLite
 try:
@@ -89,6 +91,14 @@ class SimpleEmotionDetector:
             self._init_firebase_from_env()
         except Exception as e:
             print(f"Firebase init warning: {e}")
+
+        # If Firebase is not available or not configured, allow starting detection
+        # immediately by setting the environment variable START_DETECTION_ON_LAUNCH=1
+        start_env = os.environ.get('START_DETECTION_ON_LAUNCH', '').strip().lower()
+        if start_env in ('1', 'true', 'yes', 'start', 'running'):
+            self.running_event.set()
+            self.meta['running_state'] = 'running'
+            print("START_DETECTION_ON_LAUNCH is set - starting detection without Firebase control")
 
     def _init_emotion_patterns(self):
         """Initialize enhanced emotion detection patterns with improved AU discrimination"""
@@ -158,17 +168,52 @@ class SimpleEmotionDetector:
             # firebase_admin.get_app will raise if not initialized
             firebase_admin.get_app()
             app = firebase_admin.get_app()
+            if FIREBASE_DEBUG or self.debug_mode:
+                print(f"[FIREBASE] Re-using existing app. DB URL: {db_url}")
         except Exception:
-            cred = credentials.Certificate(sa_path)
-            app = firebase_admin.initialize_app(cred, {'databaseURL': db_url})
+            # Attempt initialization with retries
+            try:
+                cred = credentials.Certificate(sa_path)
+                app = firebase_admin.initialize_app(cred, {'databaseURL': db_url})
+                if FIREBASE_DEBUG or self.debug_mode:
+                    print(f"[FIREBASE] Initialized new app. DB URL: {db_url}")
+            except Exception as e:
+                # Fail initialization and mark Firebase as unavailable
+                self.firebase_app = None
+                self.firebase_enabled = False
+                raise RuntimeError(f"Failed to initialize Firebase Admin SDK: {e}")
 
         self.firebase_app = app
         self.firebase_enabled = True
 
         # Start control polling thread to watch /control/state
-        t = threading.Thread(target=self._control_poller, daemon=True)
+        # Use a non-daemon thread so the process stays alive while the poller runs
+        t = threading.Thread(target=self._control_poller, name='FirebaseControlPoller')
+        t.daemon = False
         t.start()
+        # Keep a reference so GC doesn't collect it
+        self._control_thread = t
         print(f"Firebase initialized, DB URL: {db_url}. Control poller started.")
+
+        # Small diagnostic read of /meta to confirm connectivity
+        try:
+            meta_ref = db.reference('/meta')
+            current_meta = meta_ref.get()
+            if FIREBASE_DEBUG or self.debug_mode:
+                print(f"Firebase /meta read: {current_meta}")
+        except Exception as e:
+            if FIREBASE_DEBUG or self.debug_mode:
+                print(f"Firebase meta read failed: {e}")
+
+        # Optional test push to help debug connection if env var set
+        if os.environ.get('FIREBASE_TEST_PUSH', '').strip().lower() in ('1', 'true', 'yes'):
+            try:
+                test_ref = db.reference('/emotion_output_test')
+                test_payload = {'test': True, 'time': datetime.utcnow().isoformat(), 'note': 'test push from detector init'}
+                test_ref.push(test_payload)
+                print('Firebase test push succeeded to /emotion_output_test')
+            except Exception as e:
+                print(f'Firebase test push FAILED: {e}')
 
     def _control_poller(self):
         """Poll /control/state in RTDB and set/clear the running event.
@@ -181,10 +226,17 @@ class SimpleEmotionDetector:
             return
 
         last_state = None
+        # Simple exponential-backoff read helper for resilience
         while True:
             try:
                 ref = db.reference('/control/state')
-                state = ref.get()
+                # Use a short timeout loop with safe read
+                try:
+                    state = ref.get()
+                except Exception as e:
+                    if FIREBASE_DEBUG or self.debug_mode:
+                        print(f"[FIREBASE] Control read failed: {e}")
+                    state = None
 
                 normalized = None
                 if isinstance(state, bool):
@@ -199,26 +251,30 @@ class SimpleEmotionDetector:
                     if normalized in ('start', 'running', 'true', '1'):
                         self.running_event.set()
                         self.meta['running_state'] = 'running'
+                        # Best-effort write to /meta with safe handling
                         try:
                             db.reference('/meta').update({'running_state': 'running', 'last_start_time': datetime.utcnow().isoformat()})
-                        except Exception:
-                            pass
-                        if self.debug_mode:
-                            print("Control: START received from RTDB")
+                        except Exception as e:
+                            if FIREBASE_DEBUG or self.debug_mode:
+                                print(f"[FIREBASE] Failed to update /meta (start): {e}")
+                        if FIREBASE_DEBUG or self.debug_mode:
+                            print("[FIREBASE] Control: START received from RTDB")
                     else:
                         self.running_event.clear()
                         self.meta['running_state'] = 'stopped'
                         try:
                             db.reference('/meta').update({'running_state': 'stopped', 'last_stop_time': datetime.utcnow().isoformat()})
-                        except Exception:
-                            pass
-                        if self.debug_mode:
-                            print("Control: STOP received from RTDB")
+                        except Exception as e:
+                            if FIREBASE_DEBUG or self.debug_mode:
+                                print(f"[FIREBASE] Failed to update /meta (stop): {e}")
+                        if FIREBASE_DEBUG or self.debug_mode:
+                            print("[FIREBASE] Control: STOP received from RTDB")
 
             except Exception as e:
-                if self.debug_mode:
-                    print(f"Control poller error: {e}")
+                if FIREBASE_DEBUG or self.debug_mode:
+                    print(f"[FIREBASE] Control poller error: {e}")
 
+            # Poll interval (configurable in future)
             time.sleep(1.0)
 
     def _write_emotion_output(self, emotion, confidence, aus=None):
@@ -243,35 +299,67 @@ class SimpleEmotionDetector:
             except Exception:
                 payload['aus'] = {}
 
-        try:
-            ref = db.reference('/emotion_output')
-            ref.push(payload)
-        except Exception as e:
-            if self.debug_mode:
-                print(f"Failed to push emotion_output: {e}")
+        # Perform a reliable push with retries
+        max_retries = 3
+        delay = 0.5
+        for attempt in range(1, max_retries + 1):
+            try:
+                ref = db.reference('/emotion_output')
+                ref.push(payload)
+                if FIREBASE_DEBUG or self.debug_mode:
+                    print(f"[FIREBASE] Pushed emotion_output: {emotion} ({confidence:.2f}) at {payload['timestamp']}")
+                break
+            except Exception as e:
+                if FIREBASE_DEBUG or self.debug_mode:
+                    print(f"[FIREBASE] Failed to push emotion_output (attempt {attempt}/{max_retries}): {e}")
+                if attempt == max_retries:
+                    # Final failure: print once and continue
+                    print(f"Failed to push emotion_output after {max_retries} attempts: {e}")
+                    if self.debug_mode:
+                        import traceback
+                        traceback.print_exc()
+                else:
+                    time.sleep(delay)
+                    delay *= 2
 
     def _update_meta(self, emotion, confidence):
         """Update /meta counters and last-seen info in RTDB."""
         if not self.firebase_enabled:
             return
-
+        # Update local meta and push with retries
         try:
             self.meta['total_detections'] = int(self.meta.get('total_detections', 0)) + 1
             self.meta['last_detection_time'] = datetime.utcnow().isoformat()
             self.meta['last_emotion'] = emotion
             self.meta['last_confidence'] = float(confidence)
 
-            # Send to RTDB
-            db.reference('/meta').update({
+            payload = {
                 'total_detections': self.meta['total_detections'],
                 'last_detection_time': self.meta['last_detection_time'],
                 'last_emotion': self.meta['last_emotion'],
                 'last_confidence': self.meta['last_confidence'],
                 'running_state': self.meta.get('running_state', 'stopped')
-            })
+            }
+
+            max_retries = 3
+            delay = 0.5
+            for attempt in range(1, max_retries + 1):
+                try:
+                    db.reference('/meta').update(payload)
+                    if FIREBASE_DEBUG or self.debug_mode:
+                        print(f"[FIREBASE] Updated /meta: {payload}")
+                    break
+                except Exception as e:
+                    if FIREBASE_DEBUG or self.debug_mode:
+                        print(f"[FIREBASE] Failed to update /meta (attempt {attempt}/{max_retries}): {e}")
+                    if attempt == max_retries:
+                        print(f"Failed to update /meta after {max_retries} attempts: {e}")
+                    else:
+                        time.sleep(delay)
+                        delay *= 2
         except Exception as e:
-            if self.debug_mode:
-                print(f"Failed to update meta: {e}")
+            if FIREBASE_DEBUG or self.debug_mode:
+                print(f"[FIREBASE] Failed to prepare meta payload: {e}")
 
     def load_all_models(self):
         """Load all available models for ensembling."""
