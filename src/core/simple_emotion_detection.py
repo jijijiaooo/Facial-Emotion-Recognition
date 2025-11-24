@@ -9,6 +9,7 @@ import os
 import sys
 import pickle
 import threading
+import signal
 import time
 from datetime import datetime
 
@@ -78,6 +79,8 @@ class SimpleEmotionDetector:
         self.firebase_enabled = False
         self.firebase_app = None
         self.running_event = threading.Event()  # Controlled by /control/state in RTDB
+        # Shutdown event to signal background threads to exit cleanly
+        self.shutdown_event = threading.Event()
         self.meta = {
             'total_detections': 0,
             'last_detection_time': None,
@@ -91,6 +94,14 @@ class SimpleEmotionDetector:
             self._init_firebase_from_env()
         except Exception as e:
             print(f"Firebase init warning: {e}")
+
+        # Register signal handler to allow clean shutdown on Ctrl-C
+        try:
+            signal.signal(signal.SIGINT, self._signal_handler)
+            signal.signal(signal.SIGTERM, self._signal_handler)
+        except Exception:
+            # Some environments may not allow signal registration (e.g., Windows threads)
+            pass
 
         # If Firebase is not available or not configured, allow starting detection
         # immediately by setting the environment variable START_DETECTION_ON_LAUNCH=1
@@ -227,7 +238,7 @@ class SimpleEmotionDetector:
 
         last_state = None
         # Simple exponential-backoff read helper for resilience
-        while True:
+        while not getattr(self, 'shutdown_event', threading.Event()).is_set():
             try:
                 ref = db.reference('/control/state')
                 # Use a short timeout loop with safe read
@@ -275,7 +286,14 @@ class SimpleEmotionDetector:
                     print(f"[FIREBASE] Control poller error: {e}")
 
             # Poll interval (configurable in future)
-            time.sleep(1.0)
+            # Wait with timeout so we can exit promptly when shutdown_event is set
+            for _ in range(10):
+                if getattr(self, 'shutdown_event', threading.Event()).is_set():
+                    break
+                time.sleep(0.1)
+
+        if FIREBASE_DEBUG or self.debug_mode:
+            print("[FIREBASE] Control poller exiting")
 
     def _write_emotion_output(self, emotion, confidence, aus=None):
         """Push a detected emotion event to `/emotion_output` in RTDB.
@@ -1372,6 +1390,28 @@ class SimpleEmotionDetector:
             cap.release()
             cv2.destroyAllWindows()
             print("Simple emotion detection stopped")
+            # Signal background threads to exit and join the control poller
+            try:
+                self.shutdown_event.set()
+                if hasattr(self, '_control_thread') and self._control_thread is not None:
+                    if FIREBASE_DEBUG or self.debug_mode:
+                        print("Waiting for control poller thread to stop...")
+                    self._control_thread.join(timeout=3.0)
+                    if FIREBASE_DEBUG or self.debug_mode:
+                        print("Control poller thread joined (or timed out)")
+            except Exception:
+                pass
+
+    def _signal_handler(self, signum, frame):
+        """Signal handler to request clean shutdown from other threads."""
+        if FIREBASE_DEBUG or self.debug_mode:
+            print(f"Received signal {signum}, shutting down...")
+        try:
+            # Clear running flag and request shutdown
+            self.running_event.clear()
+            self.shutdown_event.set()
+        except Exception:
+            pass
 
 def main():
     print("Simple Emotion Detection")
