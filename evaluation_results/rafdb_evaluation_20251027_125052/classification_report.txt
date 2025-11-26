@@ -1,0 +1,26 @@
+RAF-DB EMOTION DETECTION - CLASSIFICATION REPORT
+================================================================================
+
+Evaluation Date: 2025-10-27 12:50:52
+Dataset: RAF-DB Test Set
+Test Data Path: data/RAF-DB/DATASET/test
+Total Samples: 1196
+Overall Accuracy: 0.3361 (33.61%)
+
+================================================================================
+
+              precision    recall  f1-score   support
+
+       Angry       0.36      0.40      0.38       162
+     Disgust       0.35      0.05      0.09       160
+        Fear       0.08      0.14      0.10        74
+       Happy       0.42      0.80      0.55       200
+     Neutral       0.36      0.38      0.37       200
+         Sad       0.30      0.41      0.35       200
+    Surprise       1.00      0.01      0.01       200
+
+    accuracy                           0.34      1196
+   macro avg       0.41      0.31      0.26      1196
+weighted avg       0.45      0.34      0.28      1196
+
+
