@@ -53,6 +53,10 @@ except Exception as e:
 # Configure Kivy BEFORE any other Kivy imports (critical for Raspberry Pi)
 os.environ['KIVY_NO_CONSOLELOG'] = '1'  # Reduce console spam on Raspberry Pi
 os.environ['KIVY_WINDOW'] = 'sdl2'  # Use SDL2 backend (better Raspberry Pi support)
+# Force software rendering (no OpenGL ES issues on Pi)
+os.environ['KIVY_GL_BACKEND'] = 'sdl2'
+# Disable text input bubble on Raspberry Pi (can cause window errors)
+os.environ['KIVY_NO_ARGS'] = '1'
 
 from kivy.config import Config
 # Set window properties BEFORE importing other Kivy modules
@@ -68,6 +72,9 @@ Config.set('input', 'mouse', 'mouse,multitouch_on_demand')  # Fix touch issues o
 # Raspberry Pi specific optimizations
 Config.set('graphics', 'maxfps', '30')  # Limit FPS for Raspberry Pi
 Config.set('graphics', 'multisamples', '0')  # Disable antialiasing for speed
+# Additional window backend settings for Raspberry Pi
+Config.set('graphics', 'fbo', 'hardware')  # Use hardware FBO
+Config.set('graphics', 'fullscreen', '0')  # Don't start fullscreen
 
 # Must write config changes
 Config.write()
