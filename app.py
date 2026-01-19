@@ -26,7 +26,7 @@ app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
 # Initialize SocketIO for real-time streaming
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 # Initialize the emotion detector (loads model once on startup)
 print("Initializing emotion detector...")
@@ -127,11 +127,12 @@ def predict():
         if detector.face_cascade is None:
             return jsonify({'error': 'Face detection not available'}), 500
         
+        # More lenient face detection parameters for better detection
         faces = detector.face_cascade.detectMultiScale(
             gray, 
-            scaleFactor=1.1, 
-            minNeighbors=5,
-            minSize=(48, 48)
+            scaleFactor=1.05,  # More sensitive to face sizes
+            minNeighbors=3,    # Less strict (was 5)
+            minSize=(30, 30)   # Smaller minimum face size
         )
         
         if len(faces) == 0:
