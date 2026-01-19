@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: emotion-detection-api
+    env: python
+    plan: free
+    buildCommand: "pip install -r requirements_api.txt"
+    startCommand: "gunicorn app:app --bind 0.0.0.0:$PORT --timeout 120 --workers 1 --threads 2"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.18
+      - key: PORT
+        value: 10000
