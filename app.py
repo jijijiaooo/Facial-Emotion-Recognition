@@ -26,7 +26,7 @@ app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
 # Initialize SocketIO for real-time streaming
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # Initialize the emotion detector (loads model once on startup)
 print("Initializing emotion detector...")
