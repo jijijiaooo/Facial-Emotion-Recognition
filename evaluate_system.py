@@ -533,7 +533,7 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description='Evaluate Emotion Detection System')
-    parser.add_argument('--test-path', type=str, default='data/raf_db/processed/test',
+    parser.add_argument('--test-path', type=str, default='data/combined_dataset_complete/validation',
                        help='Path to test data directory')
     parser.add_argument('--sample-size', type=int, default=None,
                        help='Total number of samples to evaluate (default: all)')

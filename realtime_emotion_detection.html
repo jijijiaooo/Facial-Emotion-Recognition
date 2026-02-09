@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Emotion Detection</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+            max-width: 900px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #667eea;
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2em;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 0.9em;
+        }
+
+        .video-container {
+            position: relative;
+            width: 100%;
+            max-width: 640px;
+            margin: 0 auto;
+            background: #000;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+
+        #video {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 30px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            min-width: 150px;
+        }
+
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        button.stop {
+            background: linear-gradient(135deg, #ff6b6b 0%, #c92a2a 100%);
+        }
+
+        .status {
+            text-align: center;
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9ff;
+            border-radius: 10px;
+            border-left: 5px solid #667eea;
+        }
+
+        .status.active {
+            background: #e6ffe6;
+            border-left-color: #44ff44;
+        }
+
+        .status.error {
+            background: #ffe6e6;
+            border-left-color: #ff4444;
+        }
+
+        .emotion-display {
+            margin-top: 20px;
+            display: none;
+        }
+
+        .emotion-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 15px;
+            padding: 25px;
+            text-align: center;
+            margin-bottom: 15px;
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.9); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .emotion-emoji {
+            font-size: 4em;
+            margin-bottom: 10px;
+        }
+
+        .emotion-name {
+            font-size: 2em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .emotion-confidence {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .fps-counter {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 0.9em;
+            z-index: 10;
+        }
+
+        .settings {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8f9ff;
+            border-radius: 10px;
+        }
+
+        .setting-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .setting-row:last-child {
+            margin-bottom: 0;
+        }
+
+        label {
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        input[type="range"] {
+            width: 200px;
+        }
+
+        select {
+            padding: 8px 15px;
+            border-radius: 8px;
+            border: 2px solid #667eea;
+            color: #667eea;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .api-url {
+            background: #f0f0f0;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 0.85em;
+            word-break: break-all;
+            margin-top: 20px;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📹 Real-Time Emotion Detection</h1>
+        <p class="subtitle">Live webcam emotion analysis powered by Azure</p>
+
+        <div class="video-container">
+            <video id="video" autoplay playsinline></video>
+            <canvas id="canvas"></canvas>
+            <div class="fps-counter" id="fps">FPS: 0</div>
+        </div>
+
+        <div class="controls">
+            <button id="startBtn">Start Camera</button>
+            <button id="stopBtn" class="stop" style="display: none;">Stop Camera</button>
+        </div>
+
+        <div class="status" id="status">
+            Click "Start Camera" to begin emotion detection
+        </div>
+
+        <div class="emotion-display" id="emotionDisplay"></div>
+
+        <div class="settings">
+            <div class="setting-row">
+                <label for="intervalSlider">Detection Interval:</label>
+                <div>
+                    <input type="range" id="intervalSlider" min="100" max="2000" value="500" step="100">
+                    <span id="intervalValue">500ms</span>
+                </div>
+            </div>
+            <div class="setting-row">
+                <label>Show Bounding Boxes:</label>
+                <select id="showBoxes">
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="api-url">
+            <strong>API Endpoint:</strong><br>
+            https://emotion-detection-api-g9budncvekdgewbk.eastasia-01.azurewebsites.net
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'https://emotion-detection-api-g9budncvekdgewbk.eastasia-01.azurewebsites.net';
+        
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const status = document.getElementById('status');
+        const emotionDisplay = document.getElementById('emotionDisplay');
+        const fpsCounter = document.getElementById('fps');
+        const intervalSlider = document.getElementById('intervalSlider');
+        const intervalValue = document.getElementById('intervalValue');
+        const showBoxesSelect = document.getElementById('showBoxes');
+
+        let stream = null;
+        let detectionInterval = null;
+        let isDetecting = false;
+        let detectionIntervalMs = 500;
+        let showBoundingBoxes = true;
+        let frameCount = 0;
+        let lastFpsUpdate = Date.now();
+
+        // Settings
+        intervalSlider.addEventListener('input', (e) => {
+            detectionIntervalMs = parseInt(e.target.value);
+            intervalValue.textContent = `${detectionIntervalMs}ms`;
+            
+            // Restart detection with new interval if already running
+            if (isDetecting) {
+                stopDetection();
+                startDetection();
+            }
+        });
+
+        showBoxesSelect.addEventListener('change', (e) => {
+            showBoundingBoxes = e.target.value === 'true';
+        });
+
+        // Start camera
+        startBtn.addEventListener('click', async () => {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    } 
+                });
+                
+                video.srcObject = stream;
+                
+                video.addEventListener('loadedmetadata', () => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    
+                    startBtn.style.display = 'none';
+                    stopBtn.style.display = 'inline-block';
+                    
+                    status.className = 'status active';
+                    status.textContent = '✅ Camera active - Detecting emotions in real-time';
+                    
+                    startDetection();
+                });
+                
+            } catch (error) {
+                status.className = 'status error';
+                status.textContent = `❌ Error accessing camera: ${error.message}`;
+            }
+        });
+
+        // Stop camera
+        stopBtn.addEventListener('click', () => {
+            stopCamera();
+        });
+
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+            
+            stopDetection();
+            
+            video.srcObject = null;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            startBtn.style.display = 'inline-block';
+            stopBtn.style.display = 'none';
+            
+            status.className = 'status';
+            status.textContent = 'Camera stopped';
+            
+            emotionDisplay.style.display = 'none';
+        }
+
+        function startDetection() {
+            isDetecting = true;
+            detectEmotion(); // First detection immediately
+            detectionInterval = setInterval(detectEmotion, detectionIntervalMs);
+        }
+
+        function stopDetection() {
+            isDetecting = false;
+            if (detectionInterval) {
+                clearInterval(detectionInterval);
+                detectionInterval = null;
+            }
+        }
+
+        async function detectEmotion() {
+            if (!isDetecting) return;
+
+            // Capture frame from video
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0);
+
+            // Convert canvas to blob
+            canvas.toBlob(async (blob) => {
+                if (!blob || !isDetecting) return;
+
+                const formData = new FormData();
+                formData.append('file', blob, 'frame.jpg');
+
+                try {
+                    const response = await fetch(`${API_URL}/predict`, {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const data = await response.json();
+                    
+                    // Update FPS counter
+                    frameCount++;
+                    const now = Date.now();
+                    if (now - lastFpsUpdate >= 1000) {
+                        const fps = Math.round(frameCount * 1000 / (now - lastFpsUpdate));
+                        fpsCounter.textContent = `FPS: ${fps}`;
+                        frameCount = 0;
+                        lastFpsUpdate = now;
+                    }
+
+                    // Display results
+                    displayResults(data);
+
+                } catch (error) {
+                    console.error('Detection error:', error);
+                    status.className = 'status error';
+                    status.textContent = `⚠️ API Error: ${error.message}`;
+                }
+            }, 'image/jpeg', 0.8);
+        }
+
+        function displayResults(data) {
+            // Clear previous bounding boxes
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (data.success && data.faces_detected > 0) {
+                status.className = 'status active';
+                status.textContent = `✅ Detecting ${data.faces_detected} face(s)`;
+
+                // Display emotions
+                emotionDisplay.innerHTML = '';
+                
+                data.results.forEach((result, index) => {
+                    // Draw bounding box
+                    if (showBoundingBoxes) {
+                        const { x, y, width, height } = result.bbox;
+                        
+                        ctx.strokeStyle = '#44ff44';
+                        ctx.lineWidth = 3;
+                        ctx.strokeRect(x, y, width, height);
+                        
+                        // Draw emotion label
+                        const emoji = getEmotionEmoji(result.emotion);
+                        const label = `${emoji} ${result.emotion} ${(result.confidence * 100).toFixed(0)}%`;
+                        
+                        ctx.fillStyle = 'rgba(68, 255, 68, 0.8)';
+                        ctx.fillRect(x, y - 30, ctx.measureText(label).width + 20, 30);
+                        
+                        ctx.fillStyle = '#000';
+                        ctx.font = 'bold 16px Arial';
+                        ctx.fillText(label, x + 10, y - 8);
+                    }
+
+                    // Create emotion card
+                    const card = document.createElement('div');
+                    card.className = 'emotion-card';
+                    card.innerHTML = `
+                        <div class="emotion-emoji">${getEmotionEmoji(result.emotion)}</div>
+                        <div class="emotion-name">${result.emotion}</div>
+                        <div class="emotion-confidence">${(result.confidence * 100).toFixed(1)}% confident</div>
+                    `;
+                    emotionDisplay.appendChild(card);
+                });
+
+                emotionDisplay.style.display = 'block';
+
+            } else if (data.success && data.faces_detected === 0) {
+                status.className = 'status';
+                status.textContent = '👤 No faces detected - Position yourself in frame';
+                emotionDisplay.style.display = 'none';
+            } else {
+                status.className = 'status error';
+                status.textContent = `❌ Error: ${data.error || 'Unknown error'}`;
+                emotionDisplay.style.display = 'none';
+            }
+        }
+
+        function getEmotionEmoji(emotion) {
+            const emojis = {
+                'Happy': '😊',
+                'Sad': '😢',
+                'Angry': '😠',
+                'Surprise': '😲',
+                'Fear': '😨',
+                'Disgust': '🤢',
+                'Neutral': '😐'
+            };
+            return emojis[emotion] || '😊';
+        }
+
+        // Clean up on page unload
+        window.addEventListener('beforeunload', () => {
+            stopCamera();
+        });
+    </script>
+</body>
+</html>

@@ -27,7 +27,7 @@ def evaluate_simple_cnn():
     print(f'   Output: {model.output_shape}')
     
     # Prepare validation data
-    val_dir = 'data/Emotion_Classification/validation'
+    val_dir = 'data/combined_dataset_complete/validation'
     print(f'\n📁 Loading validation data from: {val_dir}')
     
     val_datagen = ImageDataGenerator(rescale=1./255)

@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RTSP Camera Emotion Detection - Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            margin: 0;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #667eea;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+        .status.connected { background: #d4edda; color: #155724; }
+        .status.disconnected { background: #f8d7da; color: #721c24; }
+        .status.processing { background: #fff3cd; color: #856404; }
+        
+        .controls {
+            display: grid;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        input {
+            padding: 12px;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 30px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+        button.danger {
+            background: linear-gradient(135deg, #ff6b6b 0%, #c92a2a 100%);
+        }
+        .emotion-display {
+            background: #f8f9ff;
+            border-radius: 15px;
+            padding: 30px;
+            text-align: center;
+            margin-top: 20px;
+        }
+        .emotion-emoji {
+            font-size: 100px;
+            margin-bottom: 15px;
+        }
+        .emotion-name {
+            font-size: 36px;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        .emotion-confidence {
+            font-size: 24px;
+            color: #666;
+        }
+        .log {
+            background: #2d3748;
+            color: #48bb78;
+            padding: 20px;
+            border-radius: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+        .log-entry {
+            margin-bottom: 5px;
+        }
+        .timestamp {
+            color: #a0aec0;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📹 RTSP Camera Emotion Detection</h1>
+        
+        <div id="status" class="status disconnected">
+            ● Disconnected from server
+        </div>
+        
+        <div class="controls">
+            <label><strong>RTSP Camera URL:</strong></label>
+            <input type="text" id="rtspUrl" value="rtsp://admin:admin@192.168.0.100:8554/live" placeholder="rtsp://username:password@ip:port/path">
+            
+            <label><strong>FPS (frames per second):</strong></label>
+            <input type="number" id="fps" value="2" min="1" max="10">
+            
+            <button onclick="startStream()">🚀 Start RTSP Stream</button>
+            <button onclick="stopStream()" class="danger">⏹️ Stop Stream</button>
+            <button onclick="checkStatus()">📊 Check Status</button>
+        </div>
+        
+        <div class="emotion-display">
+            <div class="emotion-emoji" id="emoji">🤖</div>
+            <div class="emotion-name" id="emotion">Waiting for stream...</div>
+            <div class="emotion-confidence" id="confidence"></div>
+        </div>
+        
+        <div class="log" id="log">
+            <div class="log-entry">
+                <span class="timestamp">[00:00:00]</span>
+                <span>Ready to connect...</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Change these URLs for local testing vs Azure deployment
+        const API_URL = 'http://localhost:8000';  // Local: http://localhost:8000 | Azure: https://emotion-detection-api-g9budncvekdgewbk.eastasia-01.azurewebsites.net
+        const WS_URL = 'ws://localhost:8000/ws/emotions';  // Local: ws://localhost:8000/ws/emotions | Azure: wss://emotion-detection-api-g9budncvekdgewbk.eastasia-01.azurewebsites.net/ws/emotions
+        
+        let ws = null;
+
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `<span class="timestamp">[${timestamp}]</span><span>${message}</span>`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        async function startStream() {
+            const rtspUrl = document.getElementById('rtspUrl').value;
+            const fps = document.getElementById('fps').value;
+            
+            log(`Starting RTSP stream: ${rtspUrl} at ${fps} FPS...`);
+            
+            try {
+                const response = await fetch(`${API_URL}/rtsp/start?rtsp_url=${encodeURIComponent(rtspUrl)}&fps=${fps}`, {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    log('✓ RTSP stream started successfully!', 'success');
+                    updateStatus('processing', '● Processing RTSP stream...');
+                    
+                    // Connect WebSocket
+                    connectWebSocket();
+                } else {
+                    log('✗ Failed to start stream: ' + JSON.stringify(data), 'error');
+                }
+            } catch (error) {
+                log('✗ Error: ' + error.message, 'error');
+            }
+        }
+
+        async function stopStream() {
+            log('Stopping RTSP stream...');
+            
+            try {
+                const response = await fetch(`${API_URL}/rtsp/stop`, {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                log('✓ Stream stopped: ' + data.message);
+                updateStatus('disconnected', '● Disconnected from server');
+                
+                // Close WebSocket
+                if (ws) {
+                    ws.close();
+                }
+            } catch (error) {
+                log('✗ Error: ' + error.message, 'error');
+            }
+        }
+
+        async function checkStatus() {
+            log('Checking stream status...');
+            
+            try {
+                const response = await fetch(`${API_URL}/rtsp/status`);
+                const data = await response.json();
+                
+                log(`Status - Running: ${data.running}, Latest: ${JSON.stringify(data.latest_result)}`);
+                
+                if (data.latest_result) {
+                    displayEmotion(data.latest_result);
+                }
+            } catch (error) {
+                log('✗ Error: ' + error.message, 'error');
+            }
+        }
+
+        function connectWebSocket() {
+            log('Connecting to WebSocket...');
+            
+            ws = new WebSocket(WS_URL);
+            
+            ws.onopen = () => {
+                log('✓ WebSocket connected!');
+                updateStatus('connected', '● Connected - Receiving real-time updates');
+            };
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                
+                if (data.type === 'connected' || data.type === 'ping') {
+                    log(`WebSocket ${data.type}: ${data.message || 'ping'}`);
+                    if (data.type === 'ping') {
+                        ws.send('pong');
+                    }
+                    return;
+                }
+                
+                if (data.success) {
+                    displayEmotion(data);
+                    log(`Emotion detected: ${JSON.stringify(data.results)}`);
+                }
+            };
+            
+            ws.onerror = (error) => {
+                log('✗ WebSocket error: ' + error, 'error');
+            };
+            
+            ws.onclose = () => {
+                log('WebSocket closed');
+                updateStatus('disconnected', '● Disconnected from server');
+            };
+        }
+
+        function displayEmotion(data) {
+            if (data.faces_detected > 0 && data.results.length > 0) {
+                const result = data.results[0];
+                document.getElementById('emoji').textContent = getEmoji(result.emotion);
+                document.getElementById('emotion').textContent = result.emotion;
+                document.getElementById('confidence').textContent = `${(result.confidence * 100).toFixed(1)}% confident`;
+            } else {
+                document.getElementById('emoji').textContent = '👤';
+                document.getElementById('emotion').textContent = 'No face detected';
+                document.getElementById('confidence').textContent = '';
+            }
+        }
+
+        function getEmoji(emotion) {
+            const emojis = {
+                'Happy': '😊',
+                'Sad': '😢',
+                'Angry': '😠',
+                'Surprise': '😲',
+                'Fear': '😨',
+                'Disgust': '🤢',
+                'Neutral': '😐'
+            };
+            return emojis[emotion] || '😊';
+        }
+
+        function updateStatus(className, text) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.className = `status ${className}`;
+            statusDiv.textContent = text;
+        }
+    </script>
+</body>
+</html>

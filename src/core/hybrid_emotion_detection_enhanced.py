@@ -594,7 +594,11 @@ class EnhancedHybridEmotionDetector:
             
             print(f"✅ Loaded enhanced CNN model: {newest_model}")
             print(f"   Model inputs: {[inp.name for inp in model.inputs]}")
-            print(f"   Model output: {model.output.shape}")
+            # Handle both single output and multiple outputs
+            if isinstance(model.output, list):
+                print(f"   Model outputs: {[out.shape for out in model.output]}")
+            else:
+                print(f"   Model output: {model.output.shape}")
             return model
         except Exception as e:
             raise Exception(f"❌ Failed to load model: {e}")
@@ -678,35 +682,13 @@ class EnhancedHybridEmotionDetector:
         second_prob = probs[second_idx] if second_idx is not None else 0
         
         # Get specific emotion probabilities
-        fear_prob = probs[2]
         neutral_prob = probs[4]
         sad_prob = probs[5]
-        surprise_prob = probs[6]
+        fear_prob = probs[6]
         
         # Get AU features for additional checks
         au_features = self.last_au_features if self.last_au_features is not None else np.zeros(20)
         
-        # === ENHANCED RULES FOR FEAR (most problematic) ===
-        
-        # Rule F1: Strong fear markers from geometric/AU features
-        # Check if eyes are wide and brows raised (fear indicators)
-        if len(au_features) >= 5:
-            au5 = au_features[3]  # Upper Lid Raiser
-            au1 = au_features[0]  # Inner Brow Raiser
-            
-            fear_markers = au5 > 0.05 and au1 > 0.05
-            if fear_markers and fear_prob > 0.08:
-                return 'Fear', max(0.35, fear_prob * 1.5)
-        
-        # Rule F2: Fear vs Surprise disambiguation
-        if top_idx == 6 and surprise_prob > 0.20:
-            if len(au_features) >= 16:
-                au26 = au_features[15]  # Jaw Drop
-                au1 = au_features[0]    # Brow Raiser
-                
-                # Fear: raised brows WITHOUT jaw drop
-                if au26 < 0.03 and au1 > 0.03 and fear_prob > 0.10:
-                    return 'Fear', max(0.32, fear_prob * 1.3)
         
         # === ENHANCED RULES FOR SAD ===
         

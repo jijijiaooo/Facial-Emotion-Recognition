@@ -1,0 +1,61 @@
+# Use Python 3.10 slim image as base
+FROM python:3.10-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies (including FFmpeg with SRT support)
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libopencv-dev \
+    libboost-all-dev \
+    libx11-dev \
+    libgtk-3-dev \
+    wget \
+    git \
+    ffmpeg \
+    libavcodec-dev \
+    libavformat-dev \
+    libavutil-dev \
+    libswscale-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements first for better caching
+COPY api/requirements.txt /app/api/requirements.txt
+
+# Upgrade pip and install CMake first
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir cmake
+
+# Install Python dependencies (dlib will be installed separately)
+RUN pip install --no-cache-dir -r /app/api/requirements.txt || \
+    (echo "⚠️ Some packages failed, continuing without dlib..." && \
+     pip install --no-cache-dir fastapi==0.109.0 uvicorn[standard]==0.27.0 python-multipart==0.0.6 \
+     opencv-python-headless==4.9.0.80 Pillow==10.2.0 tensorflow==2.16.1 numpy==1.26.3 python-dotenv==1.0.0)
+
+# Try to install dlib from source (optional - will continue if fails)
+RUN pip install --no-cache-dir dlib==19.24.6 || \
+    echo "⚠️ dlib installation failed - facial landmarks will use fallback mode"
+
+# Download dlib face landmark predictor
+RUN wget -q http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2 && \
+    bunzip2 shape_predictor_68_face_landmarks.dat.bz2
+
+# Copy application code
+COPY api/ /app/api/
+COPY src/ /app/src/
+COPY models/ /app/models/
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PORT=8000
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import requests; requests.get('http://localhost:8000/health')"
+
+# Run the application
+CMD ["python", "-m", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,0 +1,98 @@
+{
+  "model": "emotion_enhanced_cnn_20251130_234141.h5",
+  "model_type": "Enhanced Multi-Modal CNN",
+  "timestamp": "20251203_211431",
+  "validation_samples": 9879,
+  "overall_accuracy": 0.02712825184735297,
+  "emotions": [
+    "angry",
+    "disgust",
+    "fear",
+    "happy",
+    "neutral",
+    "sad",
+    "surprise"
+  ],
+  "per_class_metrics": [
+    {
+      "emotion": "angry",
+      "accuracy": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0,
+      "correct": 0,
+      "total": 1122,
+      "support": 1122
+    },
+    {
+      "emotion": "disgust",
+      "accuracy": 1.0,
+      "precision": 0.02713099817776878,
+      "recall": 1.0,
+      "f1_score": 0.05282870096589789,
+      "correct": 268,
+      "total": 268,
+      "support": 268
+    },
+    {
+      "emotion": "fear",
+      "accuracy": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0,
+      "correct": 0,
+      "total": 1037,
+      "support": 1037
+    },
+    {
+      "emotion": "happy",
+      "accuracy": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0,
+      "correct": 0,
+      "total": 2952,
+      "support": 2952
+    },
+    {
+      "emotion": "neutral",
+      "accuracy": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0,
+      "correct": 0,
+      "total": 1851,
+      "support": 1851
+    },
+    {
+      "emotion": "sad",
+      "accuracy": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0,
+      "correct": 0,
+      "total": 1675,
+      "support": 1675
+    },
+    {
+      "emotion": "surprise",
+      "accuracy": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0,
+      "correct": 0,
+      "total": 974,
+      "support": 974
+    }
+  ],
+  "macro_avg": {
+    "precision": 0.003875856882538397,
+    "recall": 0.14285714285714285,
+    "f1_score": 0.007546957280842556
+  },
+  "weighted_avg": {
+    "precision": 0.000736016551436586,
+    "recall": 0.02712825184735297,
+    "f1_score": 0.0014331503045713772
+  }
+}
