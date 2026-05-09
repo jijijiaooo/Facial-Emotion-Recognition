@@ -24,7 +24,67 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.regularizers import l2
 
 
-def build_improved_cnn(input_shape, num_classes, dropout_rate=0.5):
+class FocalLoss(tf.keras.losses.Loss):
+    """
+    Focal Loss for addressing class imbalance and hard examples
+    
+    Paper: "Focal Loss for Dense Object Detection" (Lin et al., 2017)
+    
+    Formula: FL = -α(1-pt)^γ * log(pt)
+    where:
+        - pt is the predicted probability for the true class
+        - γ (gamma) controls how much to down-weight easy examples (default: 2.0)
+        - α (alpha) is class weighting (handled separately via class_weight in fit())
+    
+    Benefits:
+    - Down-weights easy examples (happy samples with high confidence)
+    - Up-weights hard examples (sad/fear/angry with low confidence)
+    - Helps model focus on difficult cases
+    """
+    
+    def __init__(self, gamma=2.0, label_smoothing=0.0, name='focal_loss'):
+        """
+        Args:
+            gamma: Focusing parameter (default: 2.0). Higher = more focus on hard examples
+            label_smoothing: Label smoothing factor (0.0-0.2)
+            name: Loss name
+        """
+        super().__init__(name=name)
+        self.gamma = gamma
+        self.label_smoothing = label_smoothing
+    
+    def call(self, y_true, y_pred):
+        # Apply label smoothing if specified
+        if self.label_smoothing > 0:
+            num_classes = tf.cast(tf.shape(y_true)[-1], y_pred.dtype)
+            y_true = y_true * (1.0 - self.label_smoothing) + (self.label_smoothing / num_classes)
+        
+        # Clip predictions to prevent log(0)
+        epsilon = tf.keras.backend.epsilon()
+        y_pred = tf.clip_by_value(y_pred, epsilon, 1.0 - epsilon)
+        
+        # Calculate focal loss
+        # pt is the probability of the true class
+        cross_entropy = -y_true * tf.math.log(y_pred)
+        
+        # (1 - pt)^gamma term - down-weights easy examples
+        focal_weight = tf.pow(1.0 - y_pred, self.gamma)
+        
+        # Final focal loss
+        focal_loss = focal_weight * cross_entropy
+        
+        return tf.reduce_sum(focal_loss, axis=-1)
+    
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            'gamma': self.gamma,
+            'label_smoothing': self.label_smoothing
+        })
+        return config
+
+
+def build_improved_cnn(input_shape, num_classes, dropout_rate=0.48, l2_strength=0.00015):
     """
     Build a deep CNN architecture optimized for high-accuracy emotion detection
     WITHOUT facial landmarks (simplified but powerful)
@@ -33,70 +93,70 @@ def build_improved_cnn(input_shape, num_classes, dropout_rate=0.5):
     - Very deep architecture (5 conv blocks) for better feature extraction
     - Skip connections (residual-like) for better gradient flow
     - Spatial Attention for focusing on important facial regions
-    - Strong regularization to prevent overfitting
-    - Large capacity to match enhanced hybrid model performance
+    - BALANCED regularization to prevent overfitting without underfitting
+    - Moderate capacity for good generalization
     
-    Expected accuracy: 80-88% (close to hybrid model without landmarks)
+    Expected accuracy: 80-85% train, 74-78% val (gap <8%)
     """
     inputs = layers.Input(shape=input_shape)
     
     # Conv Block 1 - Initial features
-    x = layers.Conv2D(64, (3, 3), padding='same', kernel_regularizer=l2(0.0001))(inputs)
+    x = layers.Conv2D(64, (3, 3), padding='same', kernel_regularizer=l2(l2_strength))(inputs)
     x = layers.BatchNormalization()(x)
     x = layers.Activation('relu')(x)
-    x = layers.Conv2D(64, (3, 3), padding='same', kernel_regularizer=l2(0.0001))(x)
+    x = layers.Conv2D(64, (3, 3), padding='same', kernel_regularizer=l2(l2_strength))(x)
     x = layers.BatchNormalization()(x)
     x1 = layers.Activation('relu')(x)  # Save for skip connection
     x = layers.MaxPooling2D((2, 2))(x1)
-    x = layers.Dropout(0.25)(x)
+    x = layers.Dropout(0.3)(x)
     
     # Conv Block 2 - Mid-level features
-    x = layers.Conv2D(128, (3, 3), padding='same', kernel_regularizer=l2(0.0001))(x)
+    x = layers.Conv2D(128, (3, 3), padding='same', kernel_regularizer=l2(l2_strength))(x)
     x = layers.BatchNormalization()(x)
     x = layers.Activation('relu')(x)
-    x = layers.Conv2D(128, (3, 3), padding='same', kernel_regularizer=l2(0.0001))(x)
+    x = layers.Conv2D(128, (3, 3), padding='same', kernel_regularizer=l2(l2_strength))(x)
     x = layers.BatchNormalization()(x)
     x = layers.Activation('relu')(x)
-    x = layers.Conv2D(128, (3, 3), padding='same', kernel_regularizer=l2(0.0001))(x)
+    x = layers.Conv2D(128, (3, 3), padding='same', kernel_regularizer=l2(l2_strength))(x)
     x = layers.BatchNormalization()(x)
     x2 = layers.Activation('relu')(x)  # Save for skip connection
     x = layers.MaxPooling2D((2, 2))(x2)
-    x = layers.Dropout(0.3)(x)
-    
-    # Conv Block 3 - High-level facial features
-    x = layers.Conv2D(256, (3, 3), padding='same', kernel_regularizer=l2(0.0001))(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation('relu')(x)
-    x = layers.Conv2D(256, (3, 3), padding='same', kernel_regularizer=l2(0.0001))(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation('relu')(x)
-    x = layers.Conv2D(256, (3, 3), padding='same', kernel_regularizer=l2(0.0001))(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation('relu')(x)
-    x = layers.Conv2D(256, (3, 3), padding='same', kernel_regularizer=l2(0.0001))(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation('relu')(x)
-    x = layers.MaxPooling2D((2, 2))(x)
     x = layers.Dropout(0.35)(x)
     
-    # Conv Block 4 - Complex emotion patterns
-    x = layers.Conv2D(512, (3, 3), padding='same', kernel_regularizer=l2(0.0001))(x)
+    # Conv Block 3 - High-level facial features
+    x = layers.Conv2D(256, (3, 3), padding='same', kernel_regularizer=l2(l2_strength))(x)
     x = layers.BatchNormalization()(x)
     x = layers.Activation('relu')(x)
-    x = layers.Conv2D(512, (3, 3), padding='same', kernel_regularizer=l2(0.0001))(x)
+    x = layers.Conv2D(256, (3, 3), padding='same', kernel_regularizer=l2(l2_strength))(x)
     x = layers.BatchNormalization()(x)
     x = layers.Activation('relu')(x)
-    x = layers.Conv2D(512, (3, 3), padding='same', kernel_regularizer=l2(0.0001))(x)
+    x = layers.Conv2D(256, (3, 3), padding='same', kernel_regularizer=l2(l2_strength))(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Activation('relu')(x)
+    x = layers.Conv2D(256, (3, 3), padding='same', kernel_regularizer=l2(l2_strength))(x)
     x = layers.BatchNormalization()(x)
     x = layers.Activation('relu')(x)
     x = layers.MaxPooling2D((2, 2))(x)
     x = layers.Dropout(0.4)(x)
     
-    # Conv Block 5 - Very deep features (added for enhanced performance)
-    x = layers.Conv2D(512, (3, 3), padding='same', kernel_regularizer=l2(0.0001))(x)
+    # Conv Block 4 - Complex emotion patterns (MODERATE capacity)
+    x = layers.Conv2D(448, (3, 3), padding='same', kernel_regularizer=l2(l2_strength))(x)
     x = layers.BatchNormalization()(x)
     x = layers.Activation('relu')(x)
-    x = layers.Conv2D(512, (3, 3), padding='same', kernel_regularizer=l2(0.0001))(x)
+    x = layers.Conv2D(448, (3, 3), padding='same', kernel_regularizer=l2(l2_strength))(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Activation('relu')(x)
+    x = layers.Conv2D(448, (3, 3), padding='same', kernel_regularizer=l2(l2_strength))(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Activation('relu')(x)
+    x = layers.MaxPooling2D((2, 2))(x)
+    x = layers.Dropout(0.45)(x)
+    
+    # Conv Block 5 - Very deep features (MODERATE capacity)
+    x = layers.Conv2D(448, (3, 3), padding='same', kernel_regularizer=l2(l2_strength))(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Activation('relu')(x)
+    x = layers.Conv2D(448, (3, 3), padding='same', kernel_regularizer=l2(l2_strength))(x)
     x = layers.BatchNormalization()(x)
     x = layers.Activation('relu')(x)
     
@@ -105,29 +165,29 @@ def build_improved_cnn(input_shape, num_classes, dropout_rate=0.5):
     x = layers.Multiply()([x, attention])
     
     x = layers.MaxPooling2D((2, 2))(x)
-    x = layers.Dropout(0.45)(x)
+    x = layers.Dropout(0.5)(x)
     
     # Global Average Pooling for spatial invariance
     x = layers.GlobalAveragePooling2D()(x)
     
-    # Dense layers with strong regularization (larger than before)
-    x = layers.Dense(1024, kernel_regularizer=l2(0.0001))(x)
+    # Dense layers with BALANCED regularization (MODERATE capacity)
+    x = layers.Dense(768, kernel_regularizer=l2(l2_strength))(x)
     x = layers.BatchNormalization()(x)
     x = layers.Activation('relu')(x)
     x = layers.Dropout(dropout_rate)(x)
     
-    x = layers.Dense(512, kernel_regularizer=l2(0.0001))(x)
+    x = layers.Dense(384, kernel_regularizer=l2(l2_strength))(x)
     x = layers.BatchNormalization()(x)
     x = layers.Activation('relu')(x)
     x = layers.Dropout(dropout_rate)(x)
     
-    x = layers.Dense(256, kernel_regularizer=l2(0.0001))(x)
+    x = layers.Dense(192, kernel_regularizer=l2(l2_strength))(x)
     x = layers.BatchNormalization()(x)
     x = layers.Activation('relu')(x)
     x = layers.Dropout(dropout_rate * 0.8)(x)
     
     # Output layer for 6 classes
-    outputs = layers.Dense(num_classes, activation='softmax', kernel_regularizer=l2(0.0001))(x)
+    outputs = layers.Dense(num_classes, activation='softmax', kernel_regularizer=l2(l2_strength))(x)
     
     model = models.Model(inputs=inputs, outputs=outputs)
     return model
@@ -158,10 +218,12 @@ def parse_args():
                         help='Batch size for training')
     parser.add_argument('--epochs', type=int, default=100,
                         help='Number of training epochs')
-    parser.add_argument('--lr', type=float, default=0.001,
+    parser.add_argument('--lr', type=float, default=0.0003,
                         help='Initial learning rate')
-    parser.add_argument('--dropout', type=float, default=0.5,
+    parser.add_argument('--dropout', type=float, default=0.48,
                         help='Dropout rate for dense layers')
+    parser.add_argument('--l2_strength', type=float, default=0.00015,
+                        help='L2 regularization strength')
     parser.add_argument('--model_dir', default='models',
                         help='Directory to save trained models')
     parser.add_argument('--logs_dir', default=None,
@@ -170,6 +232,14 @@ def parse_args():
                         help='Use mixed precision training for faster training')
     parser.add_argument('--warmup_epochs', type=int, default=5,
                         help='Number of warmup epochs for learning rate')
+    parser.add_argument('--label_smoothing', type=float, default=0.06,
+                        help='Label smoothing for categorical crossentropy')
+    parser.add_argument('--use_focal_loss', action='store_true',
+                        help='Use Focal Loss instead of Categorical Crossentropy (helps with hard examples)')
+    parser.add_argument('--focal_gamma', type=float, default=2.0,
+                        help='Focal loss gamma parameter (higher = more focus on hard examples)')
+    parser.add_argument('--max_class_weight', type=float, default=2.0,
+                        help='Maximum cap for class weights to avoid unstable training')
     return parser.parse_args()
 
 
@@ -182,7 +252,10 @@ def main():
     EPOCHS = args.epochs
     INITIAL_LR = args.lr
     DROPOUT_RATE = args.dropout
+    L2_STRENGTH = args.l2_strength
     WARMUP_EPOCHS = args.warmup_epochs
+    LABEL_SMOOTHING = args.label_smoothing
+    MAX_CLASS_WEIGHT = args.max_class_weight
 
     TRAIN_DIR = args.train_dir
     VAL_DIR = args.val_dir
@@ -190,11 +263,7 @@ def main():
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     MODEL_SAVE_PATH = os.path.join(args.model_dir, f'emotion_revised_cnn_{timestamp}.keras')
     LOGS_DIR = args.logs_dir or f'logs/training_revised_{timestamp}'
-
-    # 6 emotion classes (no 'surprise')
-    EMOTION_LABELS = ['angry', 'disgust', 'fear', 'happy', 'neutral', 'sad']
-
-    # Enable mixed precision if requested (speeds up training on modern GPUs)
+    # Enable mixed precision if requested
     if args.use_mixed_precision:
         policy = tf.keras.mixed_precision.Policy('mixed_float16')
         tf.keras.mixed_precision.set_global_policy(policy)
@@ -208,21 +277,25 @@ def main():
     print(f'Epochs: {EPOCHS}')
     print(f'Initial LR: {INITIAL_LR}')
     print(f'Dropout: {DROPOUT_RATE}')
+    print(f'L2 regularization: {L2_STRENGTH}')
     print(f'Warmup epochs: {WARMUP_EPOCHS}')
+    print(f'Label smoothing: {LABEL_SMOOTHING}')
+    print(f'Focal loss: {"Yes (gamma=" + str(args.focal_gamma) + ")" if args.use_focal_loss else "No"}')
+    print(f'Max class weight: {MAX_CLASS_WEIGHT}')
     print(f'Classes: {", ".join(EMOTION_LABELS)}')
     print('=' * 80)
 
-    # Enhanced data augmentation
+    # Enhanced data augmentation (BALANCED)
     print('\n[1/7] Setting up data augmentation...')
     train_datagen = ImageDataGenerator(
         rescale=1.0/255,
-        rotation_range=25,
-        width_shift_range=0.2,
-        height_shift_range=0.2,
-        shear_range=0.2,
-        zoom_range=0.2,
+        rotation_range=15,
+        width_shift_range=0.12,
+        height_shift_range=0.12,
+        shear_range=0.08,
+        zoom_range=0.12,
         horizontal_flip=True,
-        brightness_range=[0.8, 1.2],
+        brightness_range=[0.88, 1.12],
         fill_mode='nearest'
     )
 
@@ -254,7 +327,7 @@ def main():
         shuffle=False
     )
 
-    print(f'✓ Training samples: {train_generator.samples:,}')
+    print(f'✓ Training samples (directory): {train_generator.samples:,}')
     print(f'✓ Validation samples: {val_generator.samples:,}')
     print(f'✓ Classes: {EMOTION_LABELS}')
 
@@ -263,8 +336,9 @@ def main():
     labels = train_generator.classes
     counts = np.bincount(labels, minlength=len(EMOTION_LABELS))
     total = labels.shape[0]
-    class_weight = {i: float(total) / (len(EMOTION_LABELS) * max(1, counts[i])) 
+    class_weight = {i: float(total) / (len(EMOTION_LABELS) * max(1, counts[i]))
                     for i in range(len(EMOTION_LABELS))}
+    class_weight = {i: float(min(weight, MAX_CLASS_WEIGHT)) for i, weight in class_weight.items()}
     
     print('  Class distribution:')
     for i, (label, count) in enumerate(zip(EMOTION_LABELS, counts)):
@@ -275,13 +349,23 @@ def main():
     model = build_improved_cnn(
         input_shape=(IMG_SIZE, IMG_SIZE, 1), 
         num_classes=len(EMOTION_LABELS),
-        dropout_rate=DROPOUT_RATE
+        dropout_rate=DROPOUT_RATE,
+        l2_strength=L2_STRENGTH
     )
     
     optimizer = Adam(learning_rate=INITIAL_LR)
+    
+    # Choose loss function
+    if args.use_focal_loss:
+        loss_fn = FocalLoss(gamma=args.focal_gamma, label_smoothing=LABEL_SMOOTHING)
+        print(f'✓ Using Focal Loss (gamma={args.focal_gamma}, label_smoothing={LABEL_SMOOTHING})')
+    else:
+        loss_fn = tf.keras.losses.CategoricalCrossentropy(label_smoothing=LABEL_SMOOTHING)
+        print(f'✓ Using Categorical Crossentropy (label_smoothing={LABEL_SMOOTHING})')
+    
     model.compile(
         optimizer=optimizer, 
-        loss='categorical_crossentropy', 
+        loss=loss_fn, 
         metrics=['accuracy']
     )
     
@@ -315,9 +399,17 @@ def main():
             verbose=1
         ),
         EarlyStopping(
-            monitor='val_loss', 
-            patience=20,
+            monitor='accuracy', 
+            patience=10,
             restore_best_weights=True, 
+            verbose=1,
+            mode='max'
+        ),
+        ReduceLROnPlateau(
+            monitor='val_loss',
+            factor=0.5,
+            patience=4,
+            min_lr=1e-6,
             verbose=1
         ),
         lr_scheduler,
@@ -330,18 +422,17 @@ def main():
     ]
     
     print('✓ Callbacks configured:')
-    print('  - ModelCheckpoint: saving best model by val_accuracy')
-    print('  - EarlyStopping: patience=20 on val_loss')
+    print('  - ModelCheckpoint: saving best model by highest validation accuracy')
+    print('  - EarlyStopping: patience=10 on validation accuracy')
+    print('  - ReduceLROnPlateau: patience=4 on val_loss')
     print('  - LR Scheduler: cosine decay with warmup')
     print('  - TensorBoard: logging to', LOGS_DIR)
 
     # Calculate steps
     print('\n[6/7] Preparing training...')
-    steps_per_epoch = train_generator.samples // BATCH_SIZE
-    val_steps = val_generator.samples // BATCH_SIZE
-    
-    print(f'✓ Steps per epoch: {steps_per_epoch}')
-    print(f'✓ Validation steps: {val_steps}')
+    fit_kwargs = {}
+    print('✓ Steps per epoch: auto (inferred by Keras)')
+    print('✓ Validation steps: auto (inferred by Keras)')
 
     # Train
     print('\n[7/7] Training...')
@@ -349,12 +440,11 @@ def main():
     
     history = model.fit(
         train_generator,
-        steps_per_epoch=steps_per_epoch,
         epochs=EPOCHS,
         validation_data=val_generator,
-        validation_steps=val_steps,
         callbacks=callbacks,
         class_weight=class_weight,
+        **fit_kwargs,
         verbose=1
     )
 
@@ -383,7 +473,12 @@ def main():
         'total_epochs': EPOCHS,
         'initial_lr': INITIAL_LR,
         'dropout_rate': DROPOUT_RATE,
+        'l2_strength': L2_STRENGTH,
         'warmup_epochs': WARMUP_EPOCHS,
+        'label_smoothing': LABEL_SMOOTHING,
+        'use_focal_loss': args.use_focal_loss,
+        'focal_gamma': args.focal_gamma if args.use_focal_loss else None,
+        'max_class_weight': MAX_CLASS_WEIGHT,
         'train_samples': train_generator.samples,
         'val_samples': val_generator.samples,
         'total_params': total_params,

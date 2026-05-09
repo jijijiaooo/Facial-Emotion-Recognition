@@ -116,11 +116,35 @@ class VideoStreamProcessor:
     
     async def _process_frame(self, frame):
         """Process a single frame and detect emotions"""
-        # Convert BGR to RGB
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        
-        # Detect emotions
-        result = self.detector.detect_emotion(rgb_frame)
+        # Use detector-native API when available
+        if hasattr(self.detector, 'detect_emotion'):
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            result = self.detector.detect_emotion(rgb_frame)
+        else:
+            # Compatibility path for detectors exposing detect_faces + predict_emotion
+            faces = self.detector.detect_faces(frame, single_face=False)
+            detections = []
+
+            for i, (x, y, w, h) in enumerate(faces):
+                face_img = frame[y:y+h, x:x+w]
+                emotion, confidence = self.detector.predict_emotion(face_img)
+                detections.append({
+                    'face_id': i,
+                    'emotion': emotion,
+                    'confidence': float(confidence),
+                    'bbox': {
+                        'x': int(x),
+                        'y': int(y),
+                        'width': int(w),
+                        'height': int(h)
+                    }
+                })
+
+            result = {
+                'success': True,
+                'faces_detected': len(detections),
+                'results': detections
+            }
         
         # Add timestamp and metadata
         result['timestamp'] = datetime.now().isoformat()

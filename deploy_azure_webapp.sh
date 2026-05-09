@@ -10,7 +10,8 @@ echo "Azure App Service Deployment - Emotion Detection API"
 echo "========================================================="
 
 # Configuration
-RESOURCE_GROUP="emotion-detection-rg"
+az logout
+az login --use-device-codeRESOURCE_GROUP="emotion-detection-rg"
 LOCATION="eastus"
 REGISTRY_NAME="emotiondetectionacr"
 IMAGE_NAME="emotion-detection-api"

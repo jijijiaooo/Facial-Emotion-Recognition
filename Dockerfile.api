@@ -31,7 +31,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 RUN pip install --no-cache-dir -r /app/api/requirements.txt || \
     (echo "⚠️ Some packages failed, continuing without dlib..." && \
      pip install --no-cache-dir fastapi==0.109.0 uvicorn[standard]==0.27.0 python-multipart==0.0.6 \
-     opencv-python-headless==4.9.0.80 Pillow==10.2.0 tensorflow==2.16.1 numpy==1.26.3 python-dotenv==1.0.0)
+    opencv-python-headless==4.9.0.80 Pillow==10.2.0 tensorflow==2.16.1 numpy==1.26.3 matplotlib==3.8.4 python-dotenv==1.0.0)
 
 # Try to install dlib from source (optional - will continue if fails)
 RUN pip install --no-cache-dir dlib==19.24.6 || \

@@ -21,11 +21,12 @@ wheels/
 *.egg
 MANIFEST
 
-# Virtual Environment
+# Virtual environments
 venv/
 env/
 ENV/
 .venv/
+.venv-py39/
 
 # IDE
 .vscode/
@@ -38,59 +39,39 @@ ENV/
 .DS_Store
 .DS_Store?
 ._*
+.AppleDouble
+.LSOverride
 .Spotlight-V100
 .Trashes
 ehthumbs.db
 Thumbs.db
 
-# Project specific
+# Project outputs and generated data
 temp/
+logs/
+evaluation_results/
+data_quality_report/
+data/
 datasets/
+
+# Dataset splits and media artifacts
 data/train/
 data/test/
-
-# Logs
-*.log
-logs/
-
-# Kaggle
-.kaggle/
-
-# Camera test files
 test.jpg
 *.mp4
 *.avi
+emotion_screenshot.jpg
 
-# Jupyter Notebooks
+# Notebook checkpoints and notebook files
 .ipynb_checkpoints/
 *.ipynb
 
-# Large model files are now handled by Git LFS
-
-# Temporary files
+# Temporary project helpers
 alternative_download.py
 merge_datasets.py
 download_datasets.sh
 MANUAL_DOWNLOAD.md
-cleanup_project.py# macOS
+cleanup_project.py
 
-.DS_Store
-.AppleDouble
-.LSOverride
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# Project specific
-emotion_screenshot.jpg
-temp/
-logs/
-
-# Virtual environments
-venv/
-env/
-ENV/
+# Kaggle
+.kaggle/

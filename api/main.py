@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 import sys
 sys.path.append(str(Path(__file__).parent.parent))
 
-from src.core.hybrid_emotion_detection_enhanced import EnhancedHybridEmotionDetector
+from src.core.revised_emotion_detection import RevisedEmotionDetector
 from api.rtsp_stream import VideoStreamProcessor
 
 # Initialize FastAPI app
@@ -48,6 +48,19 @@ app.add_middleware(
 
 # Global detector instance
 detector = None
+
+DEFAULT_EMOTIONS = ['angry', 'disgust', 'shocked', 'happy', 'neutral', 'sad']
+
+
+def get_display_emotions(detector_instance) -> List[str]:
+    """Return user-visible emotion labels."""
+    if not detector_instance:
+        return DEFAULT_EMOTIONS
+
+    labels = getattr(detector_instance, "EMOTION_LABELS", DEFAULT_EMOTIONS)
+    if hasattr(detector_instance, "get_display_label"):
+        return [detector_instance.get_display_label(label) for label in labels]
+    return labels
 
 # Video stream processor (RTSP/SRT)
 stream_processor: VideoStreamProcessor = None
@@ -93,8 +106,8 @@ async def startup_event():
         tf.config.threading.set_inter_op_parallelism_threads(2)
         tf.config.threading.set_intra_op_parallelism_threads(2)
         
-        # Initialize detector
-        detector = EnhancedHybridEmotionDetector()
+        # Initialize detector (uses default revised model path)
+        detector = RevisedEmotionDetector()
         logger.info("✅ Emotion detector initialized successfully")
     except Exception as e:
         logger.error(f"❌ Failed to initialize detector: {e}")
@@ -119,8 +132,8 @@ async def root():
         "name": "Facial Emotion Recognition API",
         "version": "1.0.0",
         "status": "running",
-        "model": "Enhanced Hybrid CNN",
-        "emotions": ["Angry", "Disgust", "Fear", "Happy", "Neutral", "Sad", "Surprise"]
+        "model": "Revised CNN 2026",
+        "emotions": get_display_emotions(detector)
     }
 
 
@@ -157,7 +170,7 @@ async def predict_emotion(file: UploadFile = File(...)):
             raise HTTPException(status_code=400, detail="Invalid image file")
         
         # Detect faces
-        faces = detector.detect_faces(img)
+        faces = detector.detect_faces(img, single_face=False)
         
         results = []
         for i, (x, y, w, h) in enumerate(faces):
@@ -222,7 +235,7 @@ async def predict_emotions_batch(files: List[UploadFile] = File(...)):
                 continue
             
             # Detect faces
-            faces = detector.detect_faces(img)
+            faces = detector.detect_faces(img, single_face=False)
             
             results = []
             for i, (x, y, w, h) in enumerate(faces):
@@ -266,9 +279,10 @@ async def predict_emotions_batch(files: List[UploadFile] = File(...)):
 @app.get("/emotions")
 async def get_emotions():
     """Get list of supported emotions"""
+    emotions = get_display_emotions(detector)
     return {
-        "emotions": ["Angry", "Disgust", "Fear", "Happy", "Neutral", "Sad", "Surprise"],
-        "count": 7
+        "emotions": emotions,
+        "count": len(emotions)
     }
 
 
@@ -278,18 +292,16 @@ async def get_model_info():
     if detector is None:
         raise HTTPException(status_code=503, detail="Detector not initialized")
     
+    emotions = get_display_emotions(detector)
+
     return {
-        "model_type": "Enhanced Hybrid CNN",
-        "architecture": {
-            "image_cnn_branch": "256 features",
-            "geometric_features_branch": "40 → 64 features",
-            "action_units_branch": "20 → 32 features",
-            "total_features": "352 concatenated features"
-        },
-        "input_size": "96x96 grayscale",
-        "emotions": detector.emotions,
+        "model_type": "Revised CNN 2026",
+        "model_path": getattr(detector, "model_path", None),
+        "architecture": "Single-branch CNN (revised dataset)",
+        "input_size": "112x112 grayscale",
+        "emotions": emotions,
         "face_detection": "Haar Cascade",
-        "landmark_detection": "dlib 68-point" if detector.landmark_extractor.landmarks_available else "fallback"
+        "landmark_detection": "not used"
     }
 
 
